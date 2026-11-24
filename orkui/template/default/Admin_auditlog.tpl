@@ -18,8 +18,10 @@ $_actionLabels = [
 	'Player::MovePlayer'           => 'Player Moved',
 	'Player::SetPlayerSuspension'  => 'Suspension Changed',
 	'Player::RemoveNote'           => 'Note Deleted',
-	'Attendance::SetAttendance'    => 'Attendance Modified',
-	'Attendance::RemoveAttendance' => 'Attendance Removed',
+	'Attendance::SetAttendance'         => 'Attendance Modified',
+	'Attendance::RemoveAttendance'      => 'Attendance Removed',
+	'Attendance::UpdateSelfSigninClass' => 'Sign-In Class Changed',
+	'Player::SelfRegister'              => 'Self-Registration',
 	'Player::DeleteAwardRecommendation' => 'Recommendation Removed',
 	'Player::RestoreAwardRecommendation' => 'Recommendation Restored',
 	'Player::AddSecondToRecommendation' => 'Recommendation Seconded',
@@ -45,6 +47,17 @@ $_actionLabels = [
 	'Unit::RestoreUnit'                => 'Unit Restored',
 	'Unit::ClaimUnit'                  => 'Unit Claimed',
 	'Unit::TransferOwnership'          => 'Unit Ownership Transferred',
+	'BonusCredit::grant'               => 'Bonus Credit Granted',
+	'BonusCredit::revoke'              => 'Bonus Credit Removed',
+	'BonusCredit::update'              => 'Bonus Credit Changed',
+	'BonusCredit::createCategory'      => 'Bonus Credit Category Defined',
+	'BonusCredit::archiveCategory'     => 'Bonus Credit Category Archived',
+	'BonusCredit::restoreCategory'     => 'Bonus Credit Category Restored',
+	'BonusCredit::addGranter'          => 'Bonus Credit Granter Added',
+	'BonusCredit::removeGranter'       => 'Bonus Credit Granter Removed',
+	'BonusCredit::adopt'               => 'Bonus Credit Adopted',
+	'BonusCredit::withdraw'            => 'Bonus Credit Withdrawn',
+	'BonusCredit::setAcceptsOutside'   => 'Bonus Credits From Other Kingdoms',
 ];
 
 // ── JSON helpers (defined early — used in batch collector and render functions) ──
@@ -66,111 +79,19 @@ function _jsonDecode($json, $fallbackKeys = []) {
 	return [];
 }
 
-// ── Batch ID → Name lookups ──────────────────────────────────
-// Collect all IDs from the 50 rendered rows upfront, then resolve
-// in three IN queries so the page never issues per-row DB calls.
-global $DB;
-$_parkIds = []; $_kingdomIds = []; $_mundaneIds = []; $_eventIds = []; $_kawardIds = []; $_unitIds = [];
-foreach ($AuditRows as $_lr) {
-	foreach ([$_lr['Parameters'], $_lr['PriorState'], $_lr['PostState']] as $_js) {
-		$_d = @json_decode($_js, true);
-		if (!is_array($_d)) $_d = _jsonExtract($_js ?? '', ['ParkId','park_id','KingdomId','kingdom_id','MundaneId','mundane_id','given_by_id','stripped_from','RecipientId','FromMundaneId','ToMundaneId','event_id','at_park_id','at_kingdom_id','at_event_id','kingdomaward_id','KingdomAwardId','old_kingdom_id','new_kingdom_id','from_park_id','to_park_id','from_kingdom_id','to_kingdom_id','from_mundane_id','to_mundane_id']);
-		foreach (['park_id','at_park_id','ParkId','from_park_id','to_park_id'] as $_k) if (!empty($_d[$_k])) $_parkIds[(int)$_d[$_k]] = true;
-		foreach (['kingdom_id','at_kingdom_id','KingdomId','old_kingdom_id','new_kingdom_id','from_kingdom_id','to_kingdom_id'] as $_k) if (!empty($_d[$_k])) $_kingdomIds[(int)$_d[$_k]] = true;
-		foreach (['mundane_id','given_by_id','given_by','stripped_from','MundaneId','RecipientId','FromMundaneId','ToMundaneId','SuspendedById','recommended_by_id','SupporterMundaneId','supporter_mundane_id','from_mundane_id','to_mundane_id'] as $_k) if (!empty($_d[$_k]) && is_numeric($_d[$_k])) $_mundaneIds[(int)$_d[$_k]] = true;
-	// Route entity_id into the correct lookup map based on the audit row's
-	// `entity` column. Defaults to mundane when entity is unset (older rows).
-	if (!empty($_lr['EntityId'])) {
-		$_e = (int)$_lr['EntityId'];
-		switch ($_lr['Entity'] ?? 'Player') {
-			case 'Park':    $_parkIds[$_e]    = true; break;
-			case 'Kingdom': $_kingdomIds[$_e] = true; break;
-			case 'Event':   $_eventIds[$_e]   = true; break;
-			case 'Unit':    $_unitIds[$_e]    = true; break;
-			default:        $_mundaneIds[$_e] = true; break;
-		}
-	}
-		foreach (['event_id','at_event_id','EventId'] as $_k) if (!empty($_d[$_k]) && (int)$_d[$_k] > 0) $_eventIds[(int)$_d[$_k]] = true;
-		foreach (['kingdomaward_id','KingdomAwardId'] as $_k) if (!empty($_d[$_k])) $_kawardIds[(int)$_d[$_k]] = true;
-		foreach (['unit_id','UnitId'] as $_k) if (!empty($_d[$_k]) && (int)$_d[$_k] > 0) $_unitIds[(int)$_d[$_k]] = true;
-	}
-}
-$_parkMap = []; $_kingdomMap = []; $_mundaneMap = []; $_eventMap = []; $_kawardMap = []; $_classMap = []; $_unitMap = [];
-if ($_parkIds) {
-	$_ids = implode(',', array_keys($_parkIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT park_id, name FROM ork_park WHERE park_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_parkMap[(int)$_r->park_id] = $_r->name; } while ($_r->Next());
-}
-if ($_kingdomIds) {
-	$_ids = implode(',', array_keys($_kingdomIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT kingdom_id, name FROM ork_kingdom WHERE kingdom_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_kingdomMap[(int)$_r->kingdom_id] = $_r->name; } while ($_r->Next());
-}
-if ($_mundaneIds) {
-	$_ids = implode(',', array_keys($_mundaneIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT mundane_id, persona FROM ork_mundane WHERE mundane_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_mundaneMap[(int)$_r->mundane_id] = $_r->persona; } while ($_r->Next());
-}
-if ($_eventIds) {
-	$_ids = implode(',', array_keys($_eventIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT event_id, name FROM ork_event WHERE event_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_eventMap[(int)$_r->event_id] = $_r->name; } while ($_r->Next());
-}
-if ($_kawardIds) {
-	$_ids = implode(',', array_keys($_kawardIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT kingdomaward_id, name FROM ork_kingdomaward WHERE kingdomaward_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_kawardMap[(int)$_r->kingdomaward_id] = $_r->name; } while ($_r->Next());
-}
-if ($_unitIds) {
-	$_ids = implode(',', array_keys($_unitIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT unit_id, name FROM ork_unit WHERE unit_id IN ($_ids)");
-	if ($_r && $_r->Size() > 0) do { $_unitMap[(int)$_r->unit_id] = $_r->name; } while ($_r->Next());
-}
-$DB->Clear(); $_r = $DB->DataSet("SELECT class_id, name FROM ork_class ORDER BY class_id");
-if ($_r && $_r->Size() > 0) do { $_classMap[(int)$_r->class_id] = $_r->name; } while ($_r->Next());
-$DB->Clear();
-
-// Resolve names for the current filter IDs so the picker shows names, not raw numbers.
-// ByWhom is always a player; EntityFilter is resolved against whichever table the
-// EntityType column points at (Player/Park/Kingdom/Event).
-$_filterPlayerNames = [];
-$_entityFilterName  = '';
+// ── Batch ID → Name lookups (precomputed in Controller_Admin::auditlog) ──
+$_parkMap = $AuditParkMap ?? [];
+$_kingdomMap = $AuditKingdomMap ?? [];
+$_mundaneMap = $AuditMundaneMap ?? [];
+$_eventMap = $AuditEventMap ?? [];
+$_kawardMap = $AuditKawardMap ?? [];
+$_unitMap = $AuditUnitMap ?? [];
+$_classMap = $AuditClassMap ?? [];
+$_filterPlayerNames = $AuditFilterPlayerNames ?? [];
+$_entityFilterName = $AuditEntityFilterName ?? '';
 $_bywhomInt = (int)($ByWhomFilter ?? 0);
 $_entityInt = (int)($EntityFilter ?? 0);
 $_entityType = $EntityTypeFilter ?? '';
-// "By Whom" lookup (always a player)
-$_playerIds = $_bywhomInt > 0 ? [$_bywhomInt] : [];
-// "Affected Record" lookup — only treat as a player when scope is Player (or unset)
-if ($_entityInt > 0 && ($_entityType === '' || $_entityType === 'Player')) {
-	$_playerIds[] = $_entityInt;
-}
-if (!empty($_playerIds)) {
-	$_ids = implode(',', array_unique($_playerIds));
-	$DB->Clear(); $_r = $DB->DataSet("SELECT mundane_id, persona FROM ork_mundane WHERE mundane_id IN ($_ids)");
-	while ($_r && $_r->Next()) { $_filterPlayerNames[(int)$_r->mundane_id] = $_r->persona; }
-	$DB->Clear();
-}
-if ($_entityInt > 0) {
-	if ($_entityType === 'Park') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_park WHERE park_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === 'Kingdom') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_kingdom WHERE kingdom_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === 'Event') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_event WHERE event_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === 'Unit') {
-		$DB->Clear();
-		$_r = $DB->DataSet("SELECT name FROM ork_unit WHERE unit_id = {$_entityInt}");
-		if ($_r && $_r->Next()) $_entityFilterName = $_r->name;
-	} elseif ($_entityType === '' || $_entityType === 'Player') {
-		$_entityFilterName = $_filterPlayerNames[$_entityInt] ?? '';
-	}
-}
 
 // Helper: render an ID cell as "Name (link)" or plain "#id" fallback
 function _auditIdLink($type, $id, $nameMap) {
@@ -341,6 +262,37 @@ function _auditSummary($method, $params, $prior, $post, $kawardMap = [], $parkMa
 			$detail = array_filter([$date, $cls]);
 			$verb = ($method === 'Attendance::RemoveAttendance') ? 'Deleted' : 'Updated';
 			return $verb . ' attendance' . ($detail ? ': ' . implode(', ', $detail) : '');
+		case 'Attendance::UpdateSelfSigninClass':
+			// Player changed the class on their own self-signed attendance row.
+			// Prior/post use CamelCase keys (see UpdateSelfSigninClass payload).
+			$_priorCid = (int)($p['PriorClassId'] ?? $b['ClassId'] ?? 0);
+			$_newCid   = (int)($p['NewClassId']   ?? $a['ClassId'] ?? 0);
+			$_priorCls = $classMap[$_priorCid] ?? ('Class #' . $_priorCid);
+			$_newCls   = $classMap[$_newCid]   ?? ('Class #' . $_newCid);
+			$_pkid     = (int)($a['ParkId'] ?? $b['ParkId'] ?? 0);
+			$_park     = $_pkid ? ($parkMap[$_pkid] ?? '') : '';
+			$_date     = (string)($a['Date'] ?? $b['Date'] ?? '');
+			$_where    = array_filter([$_park, $_date]);
+			return 'Changed sign-in class: ' . htmlspecialchars($_priorCls) . ' → ' . htmlspecialchars($_newCls)
+				. ($_where ? ' (' . htmlspecialchars(implode(' · ', $_where)) . ')' : '');
+		case 'Player::SelfRegister':
+			// New player onboarded via SelfReg QR. Parameters include Persona,
+			// UserName, Email, ParkId, KingdomId, Result ('success'|'failure'),
+			// and on failure a Reason.
+			$_persona = (string)($p['Persona'] ?? '');
+			$_uname   = (string)($p['UserName'] ?? '');
+			$_pkid    = (int)($p['ParkId'] ?? 0);
+			$_park    = $_pkid ? ($parkMap[$_pkid] ?? '') : '';
+			$_result  = (string)($p['Result'] ?? 'success');
+			if ($_result === 'failure') {
+				$_reason = (string)($p['Reason'] ?? 'reason not recorded');
+				return 'Self-registration FAILED'
+					. ($_uname ? ' (attempted as ' . htmlspecialchars($_uname) . ')' : '')
+					. ': ' . htmlspecialchars($_reason);
+			}
+			$_who = $_persona ?: ($_uname ?: 'new player');
+			return 'Registered new player ' . htmlspecialchars($_who)
+				. ($_park ? ' at ' . htmlspecialchars($_park) : '');
 		case 'Player::RevokeDues':
 			$_kid = (int)($b['kingdom_id'] ?? 0);
 			$kingdom = $_kid ? ($kingdomMap[$_kid] ?? 'kingdom #' . $_kid) : '';
@@ -480,6 +432,42 @@ function _auditSummary($method, $params, $prior, $post, $kawardMap = [], $parkMa
 			return 'Transferred ' . htmlspecialchars($_unit)
 				. ($_fwho ? ' from ' . htmlspecialchars($_fwho) : '')
 				. ($_twho ? ' to '   . htmlspecialchars($_twho) : '');
+		case 'BonusCredit::grant':
+		case 'BonusCredit::revoke':
+			// Bonus credit (not attendance): the post row carries its names.
+			$_c = $a ?: $b;
+			$_cr = rtrim(rtrim(number_format((float)($_c['Credits'] ?? 0), 2, '.', ''), '0'), '.');
+			$_what = ($_c['CategoryName'] ?? '') !== '' ? '“' . htmlspecialchars($_c['CategoryName']) . '”' : 'bonus credit';
+			$_cls  = ($_c['ClassName'] ?? '') !== '' ? ' (' . $_cr . ' ' . htmlspecialchars($_c['ClassName']) . ($_cr === '1' ? ' credit' : ' credits') . ')' : '';
+			$_note = $method === 'BonusCredit::revoke' && ($_c['RevokeNote'] ?? '') !== '' ? ': "' . htmlspecialchars(mb_strimwidth($_c['RevokeNote'], 0, 60, '…')) . '"' : '';
+			return ($method === 'BonusCredit::grant' ? 'Granted ' : 'Removed ') . $_what . $_cls . $_note;
+		case 'BonusCredit::update':
+			// Amount or class changed: prior is the row before, post the row after.
+			$_fc = function ($c) { $_v = rtrim(rtrim(number_format((float)($c['Credits'] ?? 0), 2, '.', ''), '0'), '.'); return $_v . ' ' . htmlspecialchars($c['ClassName'] ?? ''); };
+			$_what = ($a['CategoryName'] ?? $b['CategoryName'] ?? '') !== '' ? '“' . htmlspecialchars($a['CategoryName'] ?? $b['CategoryName']) . '”' : 'bonus credit';
+			return 'Changed ' . $_what . ': ' . $_fc($b) . ' → ' . $_fc($a);
+		case 'BonusCredit::adopt':
+		case 'BonusCredit::withdraw':
+			$_n = ($a['CategoryName'] ?? $b['CategoryName'] ?? '') !== '' ? '“' . htmlspecialchars($a['CategoryName'] ?? $b['CategoryName']) . '”' : 'an Amtgard-wide credit';
+			return ($method === 'BonusCredit::adopt' ? 'Adopted ' : 'Withdrew ') . $_n . (!empty($p['as_ork_admin']) ? ' (as ORK admin)' : '');
+		case 'BonusCredit::setAcceptsOutside':
+			// The per-Kingdom yes/no: may other Kingdoms' bonus credits reach its players?
+			$_on = !empty($a['AcceptsOutside']);
+			return ($_on ? 'Turned ON' : 'Turned OFF') . ' accepting bonus credits from other Kingdoms' . (!empty($p['as_ork_admin']) ? ' (as ORK admin)' : '');
+		case 'BonusCredit::addGranter':
+		case 'BonusCredit::removeGranter':
+			$_m = $a ?: $b;
+			$_who = ($_m['Persona'] ?? '') !== '' ? htmlspecialchars($_m['Persona']) : 'a player';
+			$_for = !empty($_m['AllCredits']) || empty($_m['CategoryName']) ? ' for all categories' : ' for “' . htmlspecialchars($_m['CategoryName']) . '”';
+			return ($method === 'BonusCredit::addGranter' ? 'Appointed ' : 'Removed ') . $_who . ' as a bonus credit granter' . $_for;
+		case 'BonusCredit::createCategory':
+		case 'BonusCredit::archiveCategory':
+		case 'BonusCredit::restoreCategory':
+			$_r = $a ?: $b;
+			$_cr = rtrim(rtrim(number_format((float)($_r['DefaultCredits'] ?? 0), 2, '.', ''), '0'), '.');
+			$_name = ($_r['Name'] ?? '') !== '' ? '“' . htmlspecialchars($_r['Name']) . '”' : 'a bonus credit';
+			$_verb = $method === 'BonusCredit::createCategory' ? 'Defined ' : ($method === 'BonusCredit::archiveCategory' ? 'Archived ' : 'Restored ');
+			return $_verb . $_name . ($method === 'BonusCredit::createCategory' ? ' (' . $_cr . ($_cr === '1' ? ' credit' : ' credits') . (!empty($_r['Repeatable']) ? ', repeatable' : ', once per player') . ')' : '');
 		default:
 			return '';
 	}
@@ -910,6 +898,48 @@ function _auditDetail($method, $params, $prior, $post, $parkMap, $kingdomMap, $m
 			$html .= '</tbody></table>';
 			return $html;
 
+		case 'Player::SelfRegister':
+			// Onboarding via SelfReg QR. Useful to see persona, email, IP,
+			// the link token used, and (on failure) the rejection reason.
+			$html = '<table class="al-diff-table"><tbody>';
+			$_result = (string)($p['Result'] ?? 'success');
+			$_resCol = $_result === 'failure' ? '#c53030' : '#2f855a';
+			$html .= '<tr><td class="al-diff-field">Result</td><td colspan="2" style="color:' . $_resCol . ';font-weight:600">' . htmlspecialchars(ucfirst($_result)) . '</td></tr>';
+			if (!empty($p['Reason']))    $html .= '<tr><td class="al-diff-field">Reason</td><td colspan="2">'   . htmlspecialchars($p['Reason'])   . '</td></tr>';
+			if (!empty($p['Persona']))   $html .= '<tr><td class="al-diff-field">Persona</td><td colspan="2">'  . htmlspecialchars($p['Persona'])  . '</td></tr>';
+			if (!empty($p['UserName']))  $html .= '<tr><td class="al-diff-field">Username</td><td colspan="2">' . htmlspecialchars($p['UserName']) . '</td></tr>';
+			if (!empty($p['Email']))     $html .= '<tr><td class="al-diff-field">Email</td><td colspan="2">'    . htmlspecialchars($p['Email'])    . '</td></tr>';
+			if (!empty($p['ParkId']))    $html .= '<tr><td class="al-diff-field">Park</td><td colspan="2">'    . _auditIdLink('park',    (int)$p['ParkId'],    $parkMap)    . '</td></tr>';
+			if (!empty($p['KingdomId'])) $html .= '<tr><td class="al-diff-field">Kingdom</td><td colspan="2">' . _auditIdLink('kingdom', (int)$p['KingdomId'], $kingdomMap) . '</td></tr>';
+			if (!empty($p['RemoteAddr'])) $html .= '<tr><td class="al-diff-field">From IP</td><td colspan="2">' . htmlspecialchars($p['RemoteAddr']) . '</td></tr>';
+			if (!empty($p['SelfRegToken'])) $html .= '<tr><td class="al-diff-field">Link Token</td><td colspan="2" style="font-family:monospace;font-size:11px">' . htmlspecialchars(substr($p['SelfRegToken'], 0, 16)) . '…</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
+		case 'Attendance::UpdateSelfSigninClass':
+			// Self-signin class edit. Prior/post use CamelCase keys (ClassId, Date, ParkId, etc.).
+			if (empty($b) && empty($p)) return '<em style="color:#a0aec0">No detail available.</em>';
+			$_priorCid = (int)($p['PriorClassId'] ?? $b['ClassId'] ?? 0);
+			$_newCid   = (int)($p['NewClassId']   ?? $a['ClassId'] ?? 0);
+			$_priorCls = $classMap[$_priorCid] ?? ('Class #' . $_priorCid);
+			$_newCls   = $classMap[$_newCid]   ?? ('Class #' . $_newCid);
+			$html  = '<table class="al-diff-table">';
+			$html .= '<thead><tr><th>Field</th><th>Before</th><th>After</th></tr></thead><tbody>';
+			$html .= '<tr class="al-diff-changed"><td class="al-diff-field">Class</td>'
+			       . '<td class="al-diff-old">' . htmlspecialchars($_priorCls) . '</td>'
+			       . '<td class="al-diff-new">' . htmlspecialchars($_newCls)   . '</td></tr>';
+			// Context — these don't change on a class flip but help locate the row
+			$_att = $b ?: $a;
+			if (!empty($_att['Date']))         $html .= '<tr><td class="al-diff-field">Date</td><td colspan="2">'         . htmlspecialchars($_att['Date'])              . '</td></tr>';
+			if (!empty($_att['AttendanceId'])) $html .= '<tr><td class="al-diff-field">Attendance ID</td><td colspan="2">' . (int)$_att['AttendanceId']                   . '</td></tr>';
+			if (!empty($_att['MundaneId']))    $html .= '<tr><td class="al-diff-field">Player</td><td colspan="2">'       . _auditIdLink('player',  (int)$_att['MundaneId'], $mundaneMap) . '</td></tr>';
+			if (!empty($_att['ParkId']))       $html .= '<tr><td class="al-diff-field">Park</td><td colspan="2">'         . _auditIdLink('park',    (int)$_att['ParkId'],    $parkMap)    . '</td></tr>';
+			if (!empty($_att['KingdomId']))    $html .= '<tr><td class="al-diff-field">Kingdom</td><td colspan="2">'      . _auditIdLink('kingdom', (int)$_att['KingdomId'], $kingdomMap) . '</td></tr>';
+			if (!empty($_att['EventId']))      $html .= '<tr><td class="al-diff-field">Event</td><td colspan="2">'        . _auditIdLink('event',   (int)$_att['EventId'],   $eventMap)   . '</td></tr>';
+			if (!empty($p['RemoteAddr']))      $html .= '<tr><td class="al-diff-field">From IP</td><td colspan="2">'      . htmlspecialchars($p['RemoteAddr'])                              . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
 		case 'Player::RevokeDues':
 			$html = '<table class="al-diff-table"><tbody>';
 			if (!empty($b['mundane_id']))  $html .= '<tr><td class="al-diff-field">Player</td><td colspan="2">' . _auditIdLink('player', $b['mundane_id'], $mundaneMap) . '</td></tr>';
@@ -1262,6 +1292,104 @@ function _auditDetail($method, $params, $prior, $post, $parkMap, $kingdomMap, $m
 			$html  .= '</tbody></table>';
 			return $html;
 
+		case 'BonusCredit::grant':
+		case 'BonusCredit::revoke':
+			// Bonus credits: class credits that are not attendance (class.BonusCredit.php).
+			// Prior/post are the credit row with its names already resolved.
+			$_c = $a ?: $b;
+			if (empty($_c)) return '<em style="color:#a0aec0">No detail available.</em>';
+			$_fmtCr = function ($v) { return rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.'); };
+			$html = '<table class="al-diff-table"><tbody>';
+			$html .= '<tr><td class="al-diff-field">Category</td><td colspan="2">' . htmlspecialchars($_c['CategoryName'] ?? '') . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Class</td><td colspan="2">' . htmlspecialchars($_c['ClassName'] ?? ('Class #' . (int)($_c['ClassId'] ?? 0))) . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Credits</td><td colspan="2">' . htmlspecialchars($_fmtCr($_c['Credits'] ?? 0)) . '</td></tr>';
+			if (!empty($_c['Date'])) $html .= '<tr><td class="al-diff-field">Date</td><td colspan="2">' . htmlspecialchars($_c['Date']) . '</td></tr>';
+			if (!empty($_c['Note'])) $html .= '<tr><td class="al-diff-field">Note</td><td colspan="2">' . htmlspecialchars($_c['Note']) . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Player</td><td colspan="2">' . _auditIdLink('player', (int)($_c['MundaneId'] ?? 0), $mundaneMap + [(int)($_c['MundaneId'] ?? 0) => $_c['Persona'] ?? '']) . '</td></tr>';
+			if (!empty($_c['GrantedBy'])) $html .= '<tr><td class="al-diff-field">Granted By</td><td colspan="2">' . _auditIdLink('player', (int)$_c['GrantedBy'], $mundaneMap + [(int)$_c['GrantedBy'] => $_c['GrantedByPersona'] ?? '']) . ($_c['GrantedAt'] ?? '' ? ' <span style="color:#a0aec0;font-size:11px">' . htmlspecialchars($_c['GrantedAt']) . '</span>' : '') . '</td></tr>';
+			if ($method === 'BonusCredit::revoke') {
+				$html .= '<tr class="al-diff-changed"><td class="al-diff-field">Removed By</td><td colspan="2">' . _auditIdLink('player', (int)($_c['RevokedBy'] ?? 0), $mundaneMap + [(int)($_c['RevokedBy'] ?? 0) => $_c['RevokedByPersona'] ?? '']) . ($_c['RevokedAt'] ?? '' ? ' <span style="color:#a0aec0;font-size:11px">' . htmlspecialchars($_c['RevokedAt']) . '</span>' : '') . '</td></tr>';
+				if (!empty($_c['RevokeNote'])) $html .= '<tr><td class="al-diff-field">Why Removed</td><td colspan="2">' . htmlspecialchars($_c['RevokeNote']) . '</td></tr>';
+			}
+			if (!empty($_c['BonusCreditId'])) $html .= '<tr><td class="al-diff-field">Credit ID</td><td colspan="2">' . (int)$_c['BonusCreditId'] . '</td></tr>';
+			if (($_c['ScopeType'] ?? '') === 'kingdom' && !empty($_c['ScopeId'])) $html .= '<tr><td class="al-diff-field">Defined By</td><td colspan="2">' . _auditIdLink('kingdom', (int)$_c['ScopeId'], $kingdomMap + [(int)$_c['ScopeId'] => $_c['ScopeName'] ?? '']) . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
+		case 'BonusCredit::update':
+			if (empty($a) || empty($b)) return '<em style="color:#a0aec0">No detail available.</em>';
+			$_fmtCr = function ($v) { return rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.'); };
+			$_clsChanged = (int)($a['ClassId'] ?? 0) !== (int)($b['ClassId'] ?? 0);
+			$_crChanged  = abs((float)($a['Credits'] ?? 0) - (float)($b['Credits'] ?? 0)) > 0.0001;
+			$html = '<table class="al-diff-table"><tbody>';
+			$html .= '<tr><td class="al-diff-field">Category</td><td colspan="2">' . htmlspecialchars($a['CategoryName'] ?? '') . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Player</td><td colspan="2">' . _auditIdLink('player', (int)($a['MundaneId'] ?? 0), $mundaneMap + [(int)($a['MundaneId'] ?? 0) => $a['Persona'] ?? '']) . '</td></tr>';
+			$html .= '<tr' . ($_clsChanged ? ' class="al-diff-changed"' : '') . '><td class="al-diff-field">Class</td><td colspan="2">' . htmlspecialchars($b['ClassName'] ?? '') . ($_clsChanged ? ' → ' . htmlspecialchars($a['ClassName'] ?? '') : '') . '</td></tr>';
+			$html .= '<tr' . ($_crChanged ? ' class="al-diff-changed"' : '') . '><td class="al-diff-field">Credits</td><td colspan="2">' . htmlspecialchars($_fmtCr($b['Credits'] ?? 0)) . ($_crChanged ? ' → ' . htmlspecialchars($_fmtCr($a['Credits'] ?? 0)) : '') . '</td></tr>';
+			if (!empty($a['Date'])) $html .= '<tr><td class="al-diff-field">Date</td><td colspan="2">' . htmlspecialchars($a['Date']) . '</td></tr>';
+			if (!empty($a['GrantedBy'])) $html .= '<tr><td class="al-diff-field">Granted By</td><td colspan="2">' . _auditIdLink('player', (int)$a['GrantedBy'], $mundaneMap + [(int)$a['GrantedBy'] => $a['GrantedByPersona'] ?? '']) . '</td></tr>';
+			if (!empty($p['by_whom_id'])) $html .= '<tr><td class="al-diff-field">Changed By</td><td colspan="2">' . _auditIdLink('player', (int)$p['by_whom_id'], $mundaneMap) . '</td></tr>';
+			if (!empty($a['BonusCreditId'])) $html .= '<tr><td class="al-diff-field">Credit ID</td><td colspan="2">' . (int)$a['BonusCreditId'] . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
+		case 'BonusCredit::adopt':
+		case 'BonusCredit::withdraw':
+			$_n = (string)($a['CategoryName'] ?? $b['CategoryName'] ?? '');
+			if ($_n === '') return '<em style="color:#a0aec0">No detail available.</em>';
+			$html = '<table class="al-diff-table"><tbody>';
+			$html .= '<tr><td class="al-diff-field">Category</td><td colspan="2">' . htmlspecialchars($_n) . ' <span style="color:#a0aec0;font-size:11px">Amtgard-wide</span></td></tr>';
+			if (!empty($p['KingdomId'])) $html .= '<tr><td class="al-diff-field">Kingdom</td><td colspan="2">' . _auditIdLink('kingdom', (int)$p['KingdomId'], $kingdomMap) . '</td></tr>';
+			$html .= '<tr class="al-diff-changed"><td class="al-diff-field">Status</td><td colspan="2">' . ($method === 'BonusCredit::adopt' ? 'Adopted — may now be granted to this kingdom\'s players' : 'Withdrawn — no longer offered here; credits already granted stay') . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Acting As</td><td colspan="2">' . (!empty($p['as_ork_admin']) ? 'ORK admin, on the kingdom\'s behalf' : 'Kingdom officer') . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
+		case 'BonusCredit::setAcceptsOutside':
+			$_was = !empty($b['AcceptsOutside']);
+			$_now = !empty($a['AcceptsOutside']);
+			$html = '<table class="al-diff-table"><tbody>';
+			$html .= '<tr><td class="al-diff-field">Setting</td><td colspan="2">Let this Kingdom\'s players receive bonus credits from other Kingdoms</td></tr>';
+			if (!empty($p['KingdomId'])) $html .= '<tr><td class="al-diff-field">Kingdom</td><td colspan="2">' . _auditIdLink('kingdom', (int)$p['KingdomId'], $kingdomMap) . '</td></tr>';
+			$html .= '<tr class="al-diff-changed"><td class="al-diff-field">Changed</td><td colspan="2">' . ($_was ? 'On' : 'Off') . ' &rarr; <strong>' . ($_now ? 'On' : 'Off') . '</strong></td></tr>';
+			$html .= '<tr><td class="al-diff-field">Effect</td><td colspan="2">' . ($_now
+				? 'Other Kingdoms\' officers, park officers and granters may now grant their own Kingdom\'s bonus credits to this Kingdom\'s players. Amtgard-wide credits are unaffected (adoption governs those).'
+				: 'Other Kingdoms can no longer grant bonus credits to this Kingdom\'s players. Credits already given stay.') . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Acting As</td><td colspan="2">' . (!empty($p['as_ork_admin']) ? 'ORK admin, on the Kingdom\'s behalf' : 'Kingdom officer') . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
+		case 'BonusCredit::addGranter':
+		case 'BonusCredit::removeGranter':
+			$_m = $a ?: $b;
+			if (empty($_m)) return '<em style="color:#a0aec0">No detail available.</em>';
+			$html = '<table class="al-diff-table"><tbody>';
+			$html .= '<tr><td class="al-diff-field">Granter</td><td colspan="2">' . _auditIdLink('player', (int)($_m['MundaneId'] ?? 0), $mundaneMap + [(int)($_m['MundaneId'] ?? 0) => $_m['Persona'] ?? '']) . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Can Grant</td><td colspan="2">' . (!empty($_m['AllCredits']) || empty($_m['CategoryName']) ? 'All of the kingdom\'s credit categories' : htmlspecialchars($_m['CategoryName']) . ' only') . '</td></tr>';
+			if (!empty($p['KingdomId'])) $html .= '<tr><td class="al-diff-field">Kingdom</td><td colspan="2">' . _auditIdLink('kingdom', (int)$p['KingdomId'], $kingdomMap) . '</td></tr>';
+			$html .= '<tr class="al-diff-changed"><td class="al-diff-field">Status</td><td colspan="2">' . ($method === 'BonusCredit::addGranter' ? 'Appointed — may grant and remove those bonus credits anywhere in the kingdom' : 'Removed — no longer a bonus credit granter for those credits') . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
+
+		case 'BonusCredit::createCategory':
+		case 'BonusCredit::archiveCategory':
+		case 'BonusCredit::restoreCategory':
+			// A credit category (ork_bonus_credit_category). Post is the row after the change.
+			$_r = $a ?: $b;
+			if (empty($_r) || !is_array($_r) || empty($_r['Name'])) return '<em style="color:#a0aec0">No detail available.</em>';
+			$_fmtCr = function ($v) { return rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.'); };
+			$html = '<table class="al-diff-table"><tbody>';
+			$html .= '<tr><td class="al-diff-field">Category</td><td colspan="2">' . htmlspecialchars($_r['Name']) . '</td></tr>';
+			if (!empty($_r['Description'])) $html .= '<tr><td class="al-diff-field">Description</td><td colspan="2">' . htmlspecialchars($_r['Description']) . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Credits</td><td colspan="2">' . htmlspecialchars($_fmtCr($_r['DefaultCredits'] ?? 0)) . '</td></tr>';
+			$html .= '<tr><td class="al-diff-field">Repeatable</td><td colspan="2">' . (!empty($_r['Repeatable']) ? 'Yes — can be earned more than once' : 'No — once per player') . '</td></tr>';
+			if (($_r['SourceType'] ?? 'manual') !== 'manual') $html .= '<tr><td class="al-diff-field">Source</td><td colspan="2">' . htmlspecialchars(ucfirst($_r['SourceType']) . ' #' . (int)($_r['SourceId'] ?? 0)) . '</td></tr>';
+			if (($_r['ScopeType'] ?? '') === 'kingdom' && !empty($_r['ScopeId'])) $html .= '<tr><td class="al-diff-field">Kingdom</td><td colspan="2">' . _auditIdLink('kingdom', (int)$_r['ScopeId'], $kingdomMap + [(int)$_r['ScopeId'] => $_r['ScopeName'] ?? '']) . '</td></tr>';
+			if (isset($_r['Granted'])) $html .= '<tr><td class="al-diff-field">Players Holding It</td><td colspan="2">' . (int)$_r['Granted'] . '</td></tr>';
+			if ($method !== 'BonusCredit::createCategory') $html .= '<tr class="al-diff-changed"><td class="al-diff-field">Status</td><td colspan="2">' . ($method === 'BonusCredit::archiveCategory' ? 'Archived — no longer offered' : 'Restored — offered again') . '</td></tr>';
+			if (!empty($_r['CategoryId'])) $html .= '<tr><td class="al-diff-field">Category ID</td><td colspan="2">' . (int)$_r['CategoryId'] . '</td></tr>';
+			$html .= '</tbody></table>';
+			return $html;
 		default:
 			$out = [];
 			if ($prior && $prior !== 'null') $out[] = '<strong>Prior state:</strong><pre class="al-raw-json">' . htmlspecialchars($prior) . '</pre>';
@@ -1298,25 +1426,29 @@ function _auditPageUrl($page, $start, $end, $method, $bywhom, $entity, $entityTy
 .al-layout        { display:flex; gap:18px; align-items:flex-start; margin-top:16px; }
 .al-sidebar       { width:220px; flex-shrink:0; }
 .al-main          { flex:1; min-width:0; }
-.al-filter-card   { background:#fff; border:1px solid var(--rp-border); border-radius:8px; padding:16px; }
+.al-filter-card   { background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:8px; padding:16px; }
 .al-filter-card h3 { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
                      color:var(--rp-text-muted); margin:0 0 12px; background:transparent; border:none; text-shadow:none; padding:0; }
 .al-form-group    { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; }
 .al-form-group label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--rp-text-muted); }
-.al-form-input    { border:1px solid var(--rp-border); border-radius:5px; padding:6px 8px; font-size:13px;
-                    color:var(--rp-text); background:#fff; box-sizing:border-box; width:100%; }
-.al-form-input:focus { outline:none; border-color:#6366f1; }
+.al-form-input    { border:1px solid var(--ork-input-border); border-radius:5px; padding:6px 8px; font-size:13px;
+                    color:var(--rp-text); background:var(--ork-input-bg); box-sizing:border-box; width:100%; }
+.al-form-input:focus { outline:none; border-color:#6366f1; background:var(--ork-card-bg); }
 .al-btn-run       { width:100%; padding:8px 0; background:#4338ca; color:#fff; border:none; border-radius:6px;
                     font-size:13px; font-weight:700; cursor:pointer; margin-top:4px; }
 .al-btn-run:hover { background:#3730a3; }
 .al-btn-clear     { width:100%; padding:6px 0; background:transparent; color:var(--rp-text-muted);
                     border:1px solid var(--rp-border); border-radius:6px; font-size:12px; cursor:pointer; margin-top:6px; }
 .al-table-wrap    { overflow-x:auto; }
+/* Light only: the results table sits in .al-main with no card, so give its wrap
+   the L1 card treatment (row dividers would vanish on the gray ground otherwise).
+   Dark keeps its existing transparent look. */
+html:not([data-theme="dark"]) .al-table-wrap { background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:8px; box-shadow:var(--ork-shadow-card); }
 .al-table         { width:100%; border-collapse:collapse; font-size:13px; }
-.al-table th      { background:#f7fafc; border-bottom:2px solid var(--rp-border); padding:8px 10px;
+.al-table th      { background:var(--ork-bg-secondary); border-bottom:2px solid var(--rp-divider); padding:8px 10px;
                     text-align:left; font-size:11px; font-weight:700; text-transform:uppercase;
                     letter-spacing:.04em; color:var(--rp-text-muted); white-space:nowrap; }
-.al-table td      { padding:8px 10px; border-bottom:1px solid var(--rp-border); vertical-align:top; }
+.al-table td      { padding:8px 10px; border-bottom:1px solid var(--rp-divider); vertical-align:top; }
 .al-table tbody tr:hover { background:#fafafa; }
 .al-action-badge  { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:12px;
                     font-size:11px; font-weight:600; white-space:nowrap; }
@@ -1342,7 +1474,7 @@ html[data-theme="dark"] .al-badge-default { background:#2d3748; color:#a0aec0; }
 .al-detail-row td { background:#f7fafc; border-bottom:1px solid var(--rp-border); padding:12px 16px; }
 .al-diff-table    { width:100%; border-collapse:collapse; font-size:12px; }
 .al-diff-table th { background:#edf2f7; padding:5px 8px; text-align:left; font-weight:700; color:#4a5568; }
-.al-diff-table td { padding:5px 8px; border-top:1px solid #e2e8f0; }
+.al-diff-table td { padding:5px 8px; border-top:1px solid var(--ork-divider); }
 .al-diff-field    { font-weight:600; color:#4a5568; width:130px; }
 .al-diff-old      { color:#c53030; text-decoration:line-through; max-width:220px; word-break:break-all; }
 .al-diff-new      { color:#276749; max-width:220px; word-break:break-all; }
@@ -1358,8 +1490,8 @@ html[data-theme="dark"] .al-badge-default { background:#2d3748; color:#a0aec0; }
 .al-page-link:hover { background:#eef2ff; }
 .al-page-link.al-page-active { background:var(--rp-accent); color:#fff; border-color:var(--rp-accent); font-weight:700; }
 .al-page-link.al-page-disabled { color:var(--rp-text-muted); pointer-events:none; }
-.al-page-info     { color:var(--rp-text-muted); font-size:12px; margin-left:auto; }
-.al-empty         { padding:40px 20px; text-align:center; color:var(--rp-text-muted); font-size:14px; }
+.al-page-info     { color:var(--ork-text-on-ground); font-size:12px; margin-left:auto; }
+.al-empty         { padding:40px 20px; text-align:center; color:var(--ork-text-on-ground); font-size:14px; }
 .al-empty i       { font-size:32px; display:block; margin-bottom:10px; opacity:.4; }
 .al-entity-note   { font-size:10px; color:var(--rp-text-hint); display:block; }
 
@@ -1368,10 +1500,10 @@ html[data-theme="dark"] .al-filter-card  { background:#2d3748; border-color:#4a5
 html[data-theme="dark"] .al-filter-card h3 { color:#a0aec0; background:transparent; border:none; text-shadow:none; }
 html[data-theme="dark"] .al-form-group label { color:#a0aec0; }
 html[data-theme="dark"] .al-form-input   { background:#1a202c; border-color:#4a5568; color:#e2e8f0; }
-html[data-theme="dark"] .al-table th     { background:#374151; }
-html[data-theme="dark"] .al-table tbody tr:hover { background:#374151; }
-html[data-theme="dark"] .al-detail-row td { background:#374151; }
-html[data-theme="dark"] .al-diff-table th { background:#374151; color:#e2e8f0; }
+html[data-theme="dark"] .al-table th     { background:var(--ork-bg-tertiary); }
+html[data-theme="dark"] .al-table tbody tr:hover { background:var(--ork-bg-tertiary); }
+html[data-theme="dark"] .al-detail-row td { background:var(--ork-bg-tertiary); }
+html[data-theme="dark"] .al-diff-table th { background:var(--ork-bg-tertiary); color:#e2e8f0; }
 html[data-theme="dark"] .al-diff-table td { border-color:#4a5568; color:#e2e8f0; }
 html[data-theme="dark"] .al-diff-field   { color:#a0aec0; }
 html[data-theme="dark"] .al-diff-val     { color:#e2e8f0; }
@@ -1379,7 +1511,7 @@ html[data-theme="dark"] .al-diff-old     { color:#fc8181; }
 html[data-theme="dark"] .al-diff-new     { color:#68d391; }
 html[data-theme="dark"] .al-diff-changed  { background:rgba(255,237,153,0.08); }
 html[data-theme="dark"] .al-page-link     { border-color:#4a5568; color:#90cdf4; }
-html[data-theme="dark"] .al-page-link:hover { background:#374151; }
+html[data-theme="dark"] .al-page-link:hover { background:var(--ork-bg-tertiary); }
 html[data-theme="dark"] .al-btn-clear     { border-color:#4a5568; color:#a0aec0; }
 html[data-theme="dark"] .al-table         { color:#e2e8f0; }
 
@@ -1595,7 +1727,7 @@ html[data-theme="dark"] .al-table         { color:#e2e8f0; }
 				$_prev = null;
 				foreach ($_showPages as $_pg):
 					if ($_prev !== null && $_pg - $_prev > 1): ?>
-					<span style="color:var(--rp-text-muted)">…</span>
+					<span style="color:var(--ork-text-on-ground)">…</span>
 					<?php endif;
 					$_pUrl = _auditPageUrl($_pg, $StartDate, $EndDate, $MethodFilter, $ByWhomFilter, $EntityFilter, $EntityTypeFilter ?? '');
 				?>

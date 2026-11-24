@@ -15,6 +15,13 @@ $totalAttendance = array_sum(array_column($kingdomList, 'Attendance'));
 $uir             = UIR;
 $prevWeekly  = is_array($PrevWeekly  ?? null) ? $PrevWeekly  : [];
 $prevMonthly = is_array($PrevMonthly ?? null) ? $PrevMonthly : [];
+// Kingdom Overview attendance type. Trend arrows compare against all-attendance
+// prior periods, so they are hidden when the overview is filtered.
+$typeNote = ork_attendance_type_note($AttendanceType ?? 'all');
+if ($typeNote !== '') {
+	$prevWeekly  = [];
+	$prevMonthly = [];
+}
 
 function cpTrend(int $cur, ?int $prev): string {
 	if ($prev === null) return '';
@@ -43,6 +50,9 @@ function cpTrend(int $cur, ?int $prev): string {
 				<a class="cp-hero-badge" href="https://github.com/amtgard/ORK3" target="_blank" style="text-decoration:none">
 					<i class="fab fa-github"></i> Source
 				</a>
+				<a class="cp-hero-badge cp-hero-badge-guide" href="<?= UIR ?>Admin/guide" style="text-decoration:none">
+					<i class="fas fa-book-open"></i> Admin Guide
+				</a>
 			</div>
 		</div>
 
@@ -69,6 +79,18 @@ function cpTrend(int $cur, ?int $prev): string {
 		</div>
 	</div>
 </div>
+
+<!-- =============================================
+     ADMINISTRATOR GUIDE CALLOUT
+     ============================================= -->
+<a class="cp-guide-callout" href="<?= UIR ?>Admin/guide">
+	<span class="cp-guide-callout-icon"><i class="fas fa-book-open"></i></span>
+	<span class="cp-guide-callout-text">
+		<strong>ORK Administrator Guide</strong>
+		<span>What global admin is for, what to check before a merge, transfer or suspension, and where to log what you did. Read it before acting in another Kingdom.</span>
+	</span>
+	<span class="cp-guide-callout-btn"><i class="fas fa-arrow-right"></i> Read the guide</span>
+</a>
 
 <!-- =============================================
      TREND STATS ROW
@@ -175,6 +197,11 @@ function _cp_trend($cur, $prev, $fmt = 'number') {
 					<div class="cp-action-label">Merge Players</div>
 					<div class="cp-action-desc">Combine two duplicate player records</div>
 				</button>
+				<button class="cp-action-card" onclick="bcOpen()">
+					<div class="cp-action-icon cp-action-icon-green"><i class="fas fa-star"></i></div>
+					<div class="cp-action-label">Bonus Credits</div>
+					<div class="cp-action-desc">Amtgard-wide credits for kingdoms to adopt</div>
+				</button>
 				</div>
 		</div>
 
@@ -224,10 +251,14 @@ function _cp_trend($cur, $prev, $fmt = 'number') {
 					<i class="fas fa-table"></i> Kingdom Overview
 					<span class="adm-count"><?= count($kingdomList) ?></span>
 				</div>
+				<?= ork_attendance_type_control((string)($AttendanceType ?? 'all')) ?>
 				<div class="cp-overview-search">
 					<input type="text" id="cp-kd-search" placeholder="Filter kingdoms…" oninput="cpFilterTable(this.value)">
 				</div>
 			</div>
+			<?php if ($typeNote !== ''): ?>
+			<div class="cp-overview-note"><i class="fas fa-filter" aria-hidden="true"></i> <?= htmlspecialchars($typeNote) ?> Active Parks always counts all sign-ins. Trend arrows are hidden.</div>
+			<?php endif; ?>
 			<div style="overflow-x:auto">
 				<table class="cp-kd-table" id="cp-kd-table">
 					<thead>
@@ -288,11 +319,13 @@ function _cp_trend($cur, $prev, $fmt = 'number') {
 				<li><a href="<?= UIR ?>Reports/class_masters"><i class="fas fa-graduation-cap"></i><span>Class Masters / Paragons<span class="cp-report-list-desc">Top players by class level</span></span></a></li>
 				<li><a href="<?= UIR ?>Unit/unitlist"><i class="fas fa-users"></i><span>Companies &amp; Households<span class="cp-report-list-desc">All registered units</span></span></a></li>
 				<li><a href="<?= UIR ?>Admin/topparks"><i class="fas fa-trophy"></i><span>Top Parks by Attendance<span class="cp-report-list-desc">Ranked attendance report</span></span></a></li>
+				<li><a href="<?= UIR ?>Admin/parkactivity"><i class="fas fa-chart-line"></i><span>Park Activity<span class="cp-report-list-desc">Last attendance &amp; sign-in totals per park</span></span></a></li>
 				<li><a href="<?= UIR ?>Admin/new_player_attendance"><i class="fas fa-star"></i><span>New Player Attendance<span class="cp-report-list-desc">First-time attendees by kingdom</span></span></a></li>
 				<li><a href="<?= UIR ?>Admin/auditlog"><i class="fas fa-history"></i><span>Audit Log<span class="cp-report-list-desc">System changes &amp; admin actions</span></span></a></li>
 				<li><a href="<?= UIR ?>Admin/serverhealth"><i class="fas fa-heartbeat"></i><span>Server Health<span class="cp-report-list-desc">PHP-FPM workers, DB metrics &amp; load test</span></span></a></li>
 				<li><a href="<?= UIR ?>Admin/stateofamtgard"><i class="fas fa-globe"></i><span>State of Amtgard Report<span class="cp-report-list-desc">Annual recruitment, retention &amp; class data</span></span></a></li>
 				<li><a href="<?= UIR ?>Reports/release_utilization"><i class="fas fa-chart-line"></i><span>Release Feature Utilization<span class="cp-report-list-desc">Adoption metrics by release</span></span></a></li>
+				<li><a href="<?= UIR ?>Survey/index"><i class="fas fa-poll"></i><span>Surveys<span class="cp-report-list-desc">Build and analyse player surveys</span></span></a></li>
 			</ul>
 		</div>
 
@@ -303,6 +336,7 @@ function _cp_trend($cur, $prev, $fmt = 'number') {
 			<ul class="cp-report-list">
 				<li><a href="https://github.com/amtgard/ORK3" target="_blank"><i class="fab fa-github"></i><span>Source Code<span class="cp-report-list-desc">ORK3 on GitHub</span></span></a></li>
 				<li><a href="<?= UIR ?>Admin/permissions"><i class="fas fa-shield-alt"></i><span>Global Permissions<span class="cp-report-list-desc">System admins &amp; kingdom access</span></span></a></li>
+				<li><a href="<?= UIR ?>Admin/guide"><i class="fas fa-book-open"></i><span>Administrator Guide<span class="cp-report-list-desc">How to use global admin, and when not to</span></span></a></li>
 			</ul>
 		</div>
 
@@ -322,37 +356,37 @@ function _cp_trend($cur, $prev, $fmt = 'number') {
 }
 .cp-overlay.cp-open { display: flex; }
 .cp-modal-box {
-	background: #fff; border-radius: 10px; width: 520px; max-width: calc(100vw - 32px);
-	max-height: calc(100vh - 48px); display: flex; flex-direction: column;
+	background: var(--ork-card-bg); border-radius: 10px; width: 520px; max-width: calc(100vw - 32px);
+	max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column;
 	box-shadow: 0 8px 32px rgba(0,0,0,0.22); overflow: visible;
 }
 .cp-modal-header {
-	padding: 16px 20px; border-bottom: 1px solid #e2e8f0;
+	padding: 16px 20px; border-bottom: 1px solid var(--ork-divider);
 	display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
 }
 .cp-modal-title {
 	font-size: 16px; font-weight: 700; color: #1a202c; margin: 0;
 	background: transparent; border: none; padding: 0; border-radius: 0; text-shadow: none;
 }
-.cp-modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #a0aec0; line-height: 1; padding: 2px 6px; }
+.cp-modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--ork-text-hint); line-height: 1; padding: 2px 6px; }
 .cp-modal-close:hover { color: #2d3748; }
 .cp-modal-body { padding: 20px; overflow: visible; flex: 1; }
-.cp-modal-footer { padding: 14px 20px; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; background: #f7fafc; border-radius: 0 0 10px 10px; }
+.cp-modal-footer { padding: 14px 20px; border-top: 1px solid var(--ork-divider); display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; background: var(--ork-bg-secondary); border-radius: 0 0 10px 10px; }
 /* Field rows */
 .cp-field { margin-bottom: 14px; }
-.cp-field label { display: block; font-size: 12px; font-weight: 600; color: #4a5568; margin-bottom: 5px; }
+.cp-field label { display: block; font-size: 12px; font-weight: 600; color: var(--ork-text-body); margin-bottom: 5px; }
 .cp-field input[type=text], .cp-field input[type=email], .cp-field input[type=password], .cp-field input[type=date], .cp-field select, .cp-field textarea {
-	width: 100%; padding: 7px 10px; border: 1.5px solid #e2e8f0; border-radius: 6px;
-	font-size: 13px; color: #2d3748; background: #fff; box-sizing: border-box;
+	width: 100%; padding: 7px 10px; border: 1.5px solid var(--ork-input-border); border-radius: 6px;
+	font-size: 13px; color: #2d3748; background: var(--ork-input-bg); box-sizing: border-box;
 }
 .cp-field input:focus, .cp-field select:focus, .cp-field textarea:focus {
-	outline: none; border-color: #90cdf4; box-shadow: 0 0 0 3px rgba(66,153,225,0.15);
+	outline: none; border-color: #90cdf4; box-shadow: 0 0 0 3px rgba(66,153,225,0.15); background: var(--ork-card-bg);
 }
 .cp-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cp-field-ac { position: relative; }
 .cp-field-ac .kn-ac-results { position: absolute; left: 0; right: 0; z-index: 9999; }
 .cp-mp-cascade { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
-.cp-mp-cascade-sel { flex:1 1 140px; min-width:0; font-size:12px; padding:6px 8px; border:1px solid #cbd5e0; border-radius:6px; background:#fff; color:#4a5568; }
+.cp-mp-cascade-sel { flex:1 1 140px; min-width:0; font-size:12px; padding:6px 8px; border:1px solid var(--ork-input-border); border-radius:6px; background:var(--ork-input-bg); color:#4a5568; }
 html[data-theme="dark"] .cp-mp-cascade-sel { background: var(--ork-input-bg); color: var(--ork-text); border-color: var(--ork-input-border); }
 /* Feedback */
 .cp-feedback { padding: 10px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; margin-bottom: 14px; display: none; }
@@ -460,7 +494,7 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 <div class="cp-overlay" id="cp-moveplayer-overlay">
 	<div class="cp-modal-box">
 		<div class="cp-modal-header">
-			<h3 class="cp-modal-title"><i class="fas fa-people-arrows" style="margin-right:8px;color:#2b6cb0"></i>Move Player</h3>
+			<h3 class="cp-modal-title"><i class="fas fa-exchange-alt" style="margin-right:8px;color:#2b6cb0"></i>Move Player</h3>
 			<button class="cp-modal-close" onclick="cpCloseModal('cp-moveplayer-overlay')">&times;</button>
 		</div>
 		<div class="cp-modal-body">
@@ -495,7 +529,7 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 <div class="cp-overlay" id="cp-mergeplayer-overlay">
 	<div class="cp-modal-box" style="width:560px">
 		<div class="cp-modal-header">
-			<h3 class="cp-modal-title"><i class="fas fa-compress-alt" style="margin-right:8px;color:#c53030"></i>Merge Players</h3>
+			<h3 class="cp-modal-title"><i class="fas fa-compress-arrows-alt" style="margin-right:8px;color:#c53030"></i>Merge Players</h3>
 			<button class="cp-modal-close" onclick="cpCloseModal('cp-mergeplayer-overlay')">&times;</button>
 		</div>
 		<div class="cp-modal-body">
@@ -520,7 +554,7 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 		</div>
 		<div class="cp-modal-footer">
 			<button class="adm-btn adm-btn-ghost" onclick="cpCloseModal('cp-mergeplayer-overlay')">Cancel</button>
-			<button class="adm-btn adm-btn-danger" id="cp-mgp-submit" disabled><i class="fas fa-compress-alt"></i> Merge Players</button>
+			<button class="adm-btn adm-btn-danger" id="cp-mgp-submit" disabled><i class="fas fa-compress-arrows-alt"></i> Merge Players</button>
 		</div>
 	</div>
 </div>
@@ -576,8 +610,8 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 					<div>The abbreviation <strong id="cp-tp-abbr-conflict-abbr"></strong> is already used by <strong id="cp-tp-abbr-conflict-name"></strong> in the destination kingdom. Enter a new abbreviation for this park.</div>
 				</div>
 				<div id="cp-tp-abbr-field" style="display:none;margin-top:12px">
-					<label style="display:block;font-size:12px;font-weight:600;color:#4a5568;margin-bottom:4px">New Abbreviation <span style="color:#e53e3e">*</span></label>
-					<input type="text" id="cp-tp-new-abbr" maxlength="3" autocomplete="off" style="width:80px;padding:6px 8px;border:1px solid #cbd5e0;border-radius:4px;font-size:13px;text-transform:uppercase" placeholder="e.g. ABC">
+					<label style="display:block;font-size:12px;font-weight:600;color:var(--ork-text-secondary);margin-bottom:4px">New Abbreviation <span style="color:#e53e3e">*</span></label>
+					<input type="text" id="cp-tp-new-abbr" maxlength="3" autocomplete="off" style="width:80px;padding:6px 8px;border:1px solid var(--ork-input-border);background:var(--ork-input-bg);border-radius:4px;font-size:13px;text-transform:uppercase" placeholder="e.g. ABC">
 				</div>
 				<p style="font-size:12px;color:#e53e3e;margin:16px 0 0">This will move all players in the park to the new kingdom.</p>
 			</div>
@@ -1525,5 +1559,23 @@ html[data-theme="dark"] .cp-warning { background: #744210; border-color: #975a16
 	window.cpSort        = cpSort;
 	window.cpFilterTable = cpFilterTable;
 	cpSort(0); // apply prefix-stripped alphabetical sort on load
+})();
+</script>
+<?php /* Bonus Credits modal, Amtgard-wide host: ORK admins define credits that kingdoms adopt. */ ?>
+<script>
+window.OrkBcCfg = {
+	uir:       '<?= UIR ?>',
+	scopeType: 'ork',
+	scopeId:   0,
+	scopeName: 'Amtgard',
+	kingdomId: 0
+};
+</script>
+<?php include __DIR__ . '/_bonus_credit_assets.tpl'; ?>
+<script>
+/* Kingdom Overview In-Person / Online / All: reloads with &AttendanceType=<value>. */
+(function () {
+	var el = document.querySelector('.cp-overview-header .orn-type-control');
+	if (el && typeof window.ornAttendanceTypeControl === 'function') window.ornAttendanceTypeControl(el);
 })();
 </script>

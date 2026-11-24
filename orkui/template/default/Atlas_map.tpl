@@ -17,7 +17,8 @@
 	function initMap() {
 		map = new google.maps.Map(document.getElementById('map'), {
 			center: {lat: 0, lng: 0},
-			zoom: 2
+			zoom: 2,
+			gestureHandling: (window.matchMedia && matchMedia('(pointer: coarse)').matches) ? 'greedy' : 'auto' // one-finger pan on touch
 		});
 		$('.info-container:first-child').height($(window).height() * 0.85);
 		$('#map').height($(window).height() * 0.75);
@@ -106,6 +107,6 @@
 //]]>
 </script>
 
-<script src="//maps.googleapis.com/maps/api/js?key=AIzaSyB_hIughnMCuRdutIvw_M_uwQUCREhHuI8&callback=initMap" type="text/javascript"></script>
+<script src="//maps.googleapis.com/maps/api/js?key=AIzaSyB_hIughnMCuRdutIvw_M_uwQUCREhHuI8&callback=initMap&region=CA" type="text/javascript"></script>
 
 

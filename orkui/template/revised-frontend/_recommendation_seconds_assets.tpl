@@ -18,7 +18,7 @@
 .rs-second-withdraw:hover{border-color:#fc8181;color:#c53030;background:#fff5f5}
 .rs-seconds-badge{position:relative;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:#c6f6d5;color:#22543d;font-size:11px;font-weight:700;margin-right:6px;cursor:default}
 .rs-edit-reason-btn{height:20px;min-width:20px;padding:0 4px;font-size:10px;margin-left:6px;vertical-align:1px}
-.rs-seconds{margin-top:8px;padding-top:8px;border-top:1px dashed #e2e8f0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.rs-seconds{margin-top:8px;padding-top:8px;border-top:1px dashed var(--ork-divider);display:flex;flex-direction:column;gap:4px;min-width:0}
 .rs-second{font-size:12px;color:#4a5568;display:flex;align-items:center;gap:6px;flex-wrap:wrap;position:relative;min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .rs-second .rs-supporter{font-weight:600;color:#2d3748}
 .rs-second .rs-notes{color:#718096;font-style:italic;min-width:0;overflow-wrap:anywhere;word-break:break-word}
@@ -50,8 +50,28 @@
   left:auto;right:8px;transform:none;
 }
 
+/* The CSS tooltip above is drawn inside whatever scroll box holds the button. On
+   the kingdom Recommendations tab that is a DataTable scroll body (scrollX), which
+   clips it: on the top rows only a sliver showed above the first row. The script
+   below draws the same bubble position:fixed on <body> instead and, once it is
+   live, switches the pseudo-element version off. */
+html.rs-jstip [data-rstip]:hover::after,
+html.rs-jstip [data-rstip]:hover::before{display:none}
+.rs-jstip-bubble{
+  position:fixed;z-index:10000;pointer-events:none;
+  background:#1a202c;color:#fff;padding:5px 9px;border-radius:4px;font-size:11px;font-weight:500;
+  box-shadow:0 2px 6px rgba(0,0,0,.25);max-width:260px;width:max-content;white-space:normal;text-align:center;line-height:1.35;
+}
+.rs-jstip-bubble[hidden]{display:none}
+.rs-jstip-bubble::before{
+  content:'';position:absolute;left:var(--rs-arrow-x,50%);transform:translateX(-50%);border:5px solid transparent;
+}
+.rs-jstip-bubble.rs-jstip-above::before{top:100%;border-top-color:#1a202c}
+.rs-jstip-bubble.rs-jstip-below::before{bottom:100%;border-bottom-color:#1a202c}
+
 /* ---- Modals (rs-overlay-* IDs) — leverage the host's .pn-overlay/.pn-modal-box styles ---- */
-.rs-textarea{width:100%;resize:vertical;font-family:inherit;font-size:13px;padding:8px;border:1px solid #cbd5e0;border-radius:4px;box-sizing:border-box}
+.rs-textarea{width:100%;resize:vertical;font-family:inherit;font-size:13px;padding:8px;border:1px solid var(--ork-input-border);border-radius:4px;box-sizing:border-box;background:var(--ork-input-bg)}
+.rs-textarea:focus{background:var(--ork-card-bg)}
 .rs-modal-context{margin:0 0 12px 0;color:#4a5568;font-size:13px}
 
 /* ---- Dark mode ---- */
@@ -123,6 +143,65 @@ html[data-theme="dark"] .rs-textarea { background: var(--ork-card-bg); color: va
 </div>
 
 <script>
+/* Tooltip for [data-rstip] (the seconds badge, the + button, edit/withdraw), drawn
+   position:fixed on <body> so no scroll box can clip it: above the element when
+   there is room, else below; right-anchored inside .rs-tip-right or near the
+   viewport's right edge. Delegated, so rows the seconds script repaints and rows
+   DataTables redraws need no rebinding. Works for anonymous viewers too, unlike
+   the handlers below, which is why it sits before that guard. */
+(function() {
+	if (window.__rsTipBound) return;
+	window.__rsTipBound = true;
+	var bubble = null, cur = null;
+	function ensure() {
+		if (!bubble) {
+			bubble = document.createElement('div');
+			bubble.className = 'rs-jstip-bubble';
+			bubble.setAttribute('role', 'tooltip');
+			bubble.hidden = true;
+			document.body.appendChild(bubble);
+		}
+		return bubble;
+	}
+	function show(el) {
+		var text = el.getAttribute('data-rstip');
+		if (!text) return;
+		var b = ensure();
+		b.textContent = text;
+		b.className = 'rs-jstip-bubble';
+		b.hidden = false;
+		var r = el.getBoundingClientRect(), bw = b.offsetWidth, bh = b.offsetHeight, vw = window.innerWidth;
+		var above = r.top - bh - 8 >= 4;
+		var top = above ? r.top - bh - 8 : r.bottom + 8;
+		var rightAnchored = !!(el.closest && el.closest('.rs-tip-right')) || (r.left + r.width / 2 + bw / 2 > vw - 6);
+		var left = rightAnchored ? r.right - bw : r.left + r.width / 2 - bw / 2;
+		left = Math.max(6, Math.min(left, vw - bw - 6));
+		b.style.top = top + 'px';
+		b.style.left = left + 'px';
+		b.style.setProperty('--rs-arrow-x', Math.max(8, Math.min(bw - 8, r.left + r.width / 2 - left)) + 'px');
+		b.classList.add(above ? 'rs-jstip-above' : 'rs-jstip-below');
+		cur = el;
+	}
+	function hide() { if (bubble) bubble.hidden = true; cur = null; }
+	document.addEventListener('mouseover', function(e) {
+		var el = e.target.closest ? e.target.closest('[data-rstip]') : null;
+		if (el && el !== cur) show(el);
+	});
+	document.addEventListener('mouseout', function(e) {
+		if (!cur) return;
+		if (e.relatedTarget && cur.contains(e.relatedTarget)) return;
+		if (e.target === cur || cur.contains(e.target)) hide();
+	});
+	document.addEventListener('focusin', function(e) {
+		var el = e.target.closest ? e.target.closest('[data-rstip]') : null;
+		if (el) show(el);
+	});
+	document.addEventListener('focusout', hide);
+	document.addEventListener('scroll', hide, true);
+	document.addEventListener('click', hide, true);
+	document.documentElement.classList.add('rs-jstip');
+})();
+
 /* Recommendation Seconds — shared handlers. Idempotent: safe if included twice. */
 (function() {
 	if (window.__rsSecondsBound) return;
@@ -192,7 +271,7 @@ html[data-theme="dark"] .rs-textarea { background: var(--ork-card-bg); color: va
 			}
 			return '<span class="rs-notes">&mdash; "' + inner + '"</span>';
 		}
-		return '<span class="rs-notes-empty">&mdash; (no comment)</span>';
+		return '';
 	}
 
 	function buildOwnSecondHtml(secondId, notes, supPersona) {
@@ -208,11 +287,18 @@ html[data-theme="dark"] .rs-textarea { background: var(--ork-card-bg); color: va
 		if (!editBtn) return false;
 		var secondEl = editBtn.closest('.rs-second');
 		if (!secondEl) return false;
-		var oldNotes = secondEl.querySelector('.rs-notes, .rs-notes-empty');
-		if (!oldNotes) return false;
 		var holder = document.createElement('div');
 		holder.innerHTML = buildNotesSpanHtml(newNotes);
-		secondEl.replaceChild(holder.firstChild, oldNotes);
+		var newNotesEl = holder.firstChild; // null when newNotes is empty (no-comment second)
+		var oldNotes = secondEl.querySelector('.rs-notes, .rs-notes-empty');
+		if (oldNotes) {
+			if (newNotesEl) secondEl.replaceChild(newNotesEl, oldNotes);
+			else secondEl.removeChild(oldNotes);
+		} else if (newNotesEl) {
+			var actions = secondEl.querySelector('.rs-second-actions');
+			if (actions) secondEl.insertBefore(newNotesEl, actions);
+			else secondEl.appendChild(newNotesEl);
+		}
 		editBtn.setAttribute('data-notes', newNotes || '');
 		return true;
 	}

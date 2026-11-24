@@ -51,6 +51,11 @@ $rangeLimitMonths = (int)($RangeLimitMonths ?? 0);  // 12 in production, 0 = unl
               title="Set dates to the full attendance history (<?= htmlspecialchars($minDate) ?> &ndash; <?= htmlspecialchars($maxDate) ?>)">All Time</button>
     </div>
     <?php endif; ?>
+    <div class="sor-filter-group sor-filter-type" id="sor-type-group">
+      <label id="sor-type-label">Attendance</label>
+      <?= ork_attendance_type_control('all') ?>
+      <p class="sor-type-note" id="sor-type-note" aria-live="polite"></p>
+    </div>
     <div class="sor-filter-group sor-filter-kingdoms">
       <label for="sor-kingdoms">Kingdoms <small style="font-weight:400;color:#888">(Ctrl+click to multi-select)</small></label>
       <select id="sor-kingdoms" multiple size="6">
@@ -179,6 +184,7 @@ window.SOR_RANGE_LIMIT_MONTHS = <?= (int)$rangeLimitMonths ?>;
       A normal player is defined as someone with <strong>4 or more sign-ins</strong> and <strong>at least 12 credits</strong> during the report period.
       Players with only 1&ndash;3 sign-ins are visitors or trial attendees and are excluded from normal-player averages
       to give a more representative picture of engaged community members.
+      With In-Person or Online selected, the figures count only sign-ins of that type, while normal-player status still uses sign-ins of every type.
     </div>
 
     <!-- 3. Two-column prose stats -->
@@ -202,7 +208,7 @@ window.SOR_RANGE_LIMIT_MONTHS = <?= (int)$rangeLimitMonths ?>;
       </div>
       <p class="sor-note" style="margin-top:6px">
         Longevity is measured from a player&#8217;s first-ever attendance record to the end of the report period.
-        Only players active during the selected date range are included.
+        Only players active during the selected date range are included. With In-Person or Online selected, only players with a sign-in of that type in the range are counted; their longevity still runs from their first sign-in of any type.
       </p>
     </div>
 
@@ -212,6 +218,7 @@ window.SOR_RANGE_LIMIT_MONTHS = <?= (int)$rangeLimitMonths ?>;
       <div id="sor-retention-body" style="margin-top:8px"></div>
       <p class="sor-note" style="margin-top:6px">
         Fixed-cohort analysis: only players whose first-ever sign-in was at least 2 years before the latest data, so retention isn&#8217;t censored by recent joiners. This panel ignores the date range above (it always studies mature cohorts) but respects the kingdom filter. A &ldquo;real joiner&rdquo; is anyone with 4+ sign-in days &mdash; matching this report&#8217;s definition of 1&ndash;3 sign-ins as visitors/trial attendees. &ldquo;Still active at N&rdquo; means they actually attended within 3 months of that anniversary, not merely that their first&ndash;last span reached it.
+        With In-Person or Online selected, the cohort is the players with at least one sign-in of that type; median sign-ins, &ldquo;still active&rdquo; and active months count only that type, while one-and-done, real-joiner status and tenure use sign-ins of every type.
       </p>
     </div>
 
@@ -573,7 +580,7 @@ html {
 }
 .sor-toc {
   background: var(--ork-card-bg, #fff);
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--ork-border);
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.06);
   padding: 14px 18px;
@@ -628,13 +635,13 @@ html {
   text-align: right;
   margin-top: 16px;
   padding-top: 10px;
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--ork-border);
 }
 .sor-back-to-top a {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #718096;
+  color: var(--ork-text-on-ground);
   font-size: 0.82rem;
   font-weight: 600;
   text-decoration: none;
@@ -652,7 +659,7 @@ html {
 
 /* ---- Filter Card ---- */
 .sor-filter-card {
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 8px;
   box-shadow: 0 2px 12px rgba(0,0,0,0.09);
   padding: 22px 24px 18px;
@@ -696,36 +703,48 @@ html {
 
 .sor-filter-group input[type="date"] {
   padding: 7px 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ork-input-border);
   border-radius: 5px;
   font-size: 0.9rem;
   color: #2d3748;
-  background: #f9fafb;
+  background: var(--ork-input-bg);
   outline: none;
   transition: border-color 0.15s;
 }
 
 .sor-filter-group input[type="date"]:focus {
   border-color: #c0392b;
-  background: #fff;
+  background: var(--ork-card-bg);
 }
 
 .sor-filter-kingdoms select {
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--ork-input-border);
   border-radius: 5px;
   padding: 6px 8px;
   font-size: 0.88rem;
   min-width: 200px;
   max-width: 360px;
-  background: #f9fafb;
+  background: var(--ork-input-bg);
   color: #2d3748;
   outline: none;
 }
 
 .sor-filter-kingdoms select:focus {
   border-color: #c0392b;
-  background: #fff;
+  background: var(--ork-card-bg);
 }
+
+/* In-Person / Online / All. The control itself is styled by orkui.css. */
+.sor-filter-type { max-width: 100%; min-width: 0; }
+.sor-type-note {
+  margin: 0;
+  max-width: 340px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--ork-text-secondary);
+}
+.sor-type-note:empty { display: none; }
 
 /* Setting custom backgrounds on <option> disables the browser's native
    selection highlight, so we paint it ourselves. The linear-gradient hack
@@ -808,7 +827,7 @@ html {
 .sor-section-divider {
   margin-bottom: 16px;
   padding-bottom: 10px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--ork-border);
 }
 
 .sor-section-heading {
@@ -833,7 +852,7 @@ html {
 }
 .sor-kpi-card {
   flex: 1 1 130px;
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 10px;
   border-top: 4px solid #ccc;
   padding: 16px 14px 12px;
@@ -850,20 +869,20 @@ html {
 /* ---- Cohort Funnel ---- */
 .sor-players-funnel-wrap {
   margin: 0 0 20px;
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 8px;
-  border: 1px solid #e8ecf0;
+  border: 1px solid var(--ork-border);
   padding: 14px 16px 6px;
 }
 
 /* ---- Parks enhancement charts ---- */
-#sor-parks-net-chart    { background: #fff; border-radius: 8px; padding: 8px; }
-#sor-parks-health-chart { background: #fff; border-radius: 8px; padding: 8px; }
+#sor-parks-net-chart    { background: var(--ork-card-bg); border-radius: 8px; padding: 8px; }
+#sor-parks-health-chart { background: var(--ork-card-bg); border-radius: 8px; padding: 8px; }
 
 /* ---- Diversity Index Card ---- */
 .sor-diversity-card {
-  background: #f8f9fc;
-  border: 1px solid #e2e8f0;
+  background: var(--ork-card-bg);
+  border: 1px solid var(--ork-border);
   border-left: 4px solid #2980b9;
   border-radius: 6px;
   padding: 10px 14px;
@@ -914,7 +933,7 @@ html {
 
 .sor-section-subtitle {
   font-size: 13px;
-  color: #718096;
+  color: var(--ork-text-on-ground);
   font-weight: 400;
 }
 
@@ -1006,7 +1025,7 @@ html {
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   border-radius: 6px;
   overflow: hidden;
-  background: #fff;
+  background: var(--ork-card-bg);
 }
 
 .sor-table thead th {
@@ -1144,7 +1163,7 @@ html {
 
 /* Chart card */
 .sor-chart-card {
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 6px;
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   padding: 16px 8px 8px 8px;
@@ -1247,7 +1266,7 @@ html {
   border-collapse: collapse;
   font-size: 0.88rem;
   box-shadow: 0 1px 4px rgba(0,0,0,0.09);
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1444,19 +1463,19 @@ html {
   border-radius: 6px;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0,0,0,0.09);
-  background: #fff;
+  background: var(--ork-card-bg);
 }
 
 .sor-note {
   margin: 8px 0 0 0;
   font-size: 0.78rem;
-  color: #888;
+  color: var(--ork-text-on-ground);
   line-height: 1.5;
 }
 
 .sor-table-label {
   font-size: 0.78rem;
-  color: #888;
+  color: var(--ork-text-on-ground);
   margin: 0 0 6px 0;
 }
 </style>
@@ -1473,12 +1492,12 @@ html {
 
 .sor-parks-stat-card {
   flex: 1 1 140px;
-  background: #fff;
-  border: 1px solid #ddd;
+  background: var(--ork-card-bg);
+  border: 1px solid var(--ork-border);
   border-radius: 6px;
   padding: 14px 16px;
   text-align: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+  box-shadow: var(--ork-shadow-card);
 }
 
 .sor-parks-stat-card .sor-parks-stat-value {
@@ -1527,7 +1546,8 @@ html {
 /* Expandable park lists */
 .sor-parks-expandable {
   margin-bottom: 20px;
-  border: 1px solid #ddd;
+  background: var(--ork-card-bg);
+  border: 1px solid var(--ork-border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -1537,7 +1557,7 @@ html {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: #f5f5f5;
+  background: var(--ork-bg-secondary);
   cursor: pointer;
   user-select: none;
   font-size: 0.9rem;
@@ -1549,7 +1569,7 @@ html {
 }
 
 .sor-parks-expandable-header:hover {
-  background: #ececec;
+  background: var(--ork-bg-tertiary);
 }
 
 .sor-parks-expandable-header .sor-parks-expand-icon {
@@ -1565,7 +1585,7 @@ html {
 .sor-parks-expandable-body {
   display: none;
   padding: 12px 14px;
-  background: #fff;
+  background: var(--ork-card-bg);
 }
 
 .sor-parks-expandable-body.sor-parks-visible {
@@ -1588,7 +1608,7 @@ html {
   color: #555;
   margin-bottom: 6px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--ork-divider);
 }
 
 .sor-parks-park-list {
@@ -1701,8 +1721,9 @@ html {
 .sor-parks-table-wrap {
   overflow-x: auto;
   margin-bottom: 24px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--ork-border);
   border-radius: 6px;
+  background: var(--ork-card-bg);
 }
 
 .sor-parks-table {
@@ -1753,7 +1774,7 @@ html {
 
 .sor-parks-table td {
   padding: 8px 12px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--ork-divider);
   color: #333;
 }
 
@@ -1791,9 +1812,9 @@ html {
 
 .sor-parks-chart-outer {
   overflow-x: auto;
-  border: 1px solid #ddd;
+  border: 1px solid var(--ork-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--ork-card-bg);
 }
 
 #sor-parks-chart-container {
@@ -1911,7 +1932,7 @@ html {
 }
 
 .sor-players-card {
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 10px;
   padding: 18px 16px 14px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -1966,7 +1987,7 @@ html {
   .sor-players-prose { grid-template-columns: 1fr; }
 }
 .sor-players-prose-col {
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 10px;
   padding: 18px 20px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.07);
@@ -1985,7 +2006,7 @@ html {
   font-size: 1rem;
   font-weight: 700;
   color: #1a1a2e;
-  border-bottom: 2px solid #eee !important;
+  border-bottom: 2px solid var(--ork-divider) !important;
 }
 .sor-players-prose-col strong {
   color: #1a1a2e;
@@ -2008,7 +2029,7 @@ html {
 
 /* ---- Trend chart ---- */
 .sor-players-chart-wrap {
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 10px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.07);
@@ -2025,7 +2046,7 @@ html {
   font-size: 1rem;
   font-weight: 700;
   color: #1a1a2e;
-  border-bottom: 2px solid #eee !important;
+  border-bottom: 2px solid var(--ork-divider) !important;
   display: block;
 }
 #sor-players-chart {
@@ -2085,11 +2106,11 @@ html {
 <style>
 /* ===== New Player Retention ===== */
 .sor-ret-grid { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
-.sor-ret-card { flex:1 1 130px; min-width:120px; background:#f7fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 10px; text-align:center; }
+.sor-ret-card { flex:1 1 130px; min-width:120px; background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:8px; padding:12px 10px; text-align:center; }
 .sor-ret-val { font-size:22px; font-weight:700; color:#2b6cb0; }
 .sor-ret-lbl { font-size:11px; color:#718096; margin-top:4px; line-height:1.3; }
 .sor-ret-sub { font-size:13px; font-weight:600; color:#4a5568; margin-top:6px; }
-html[data-theme="dark"] .sor-ret-card { background:rgba(255,255,255,0.04); border-color:var(--ork-input-border,#2d3748); }
+html[data-theme="dark"] .sor-ret-card { background:var(--ork-bg-tertiary); border-color:var(--ork-border); }
 html[data-theme="dark"] .sor-ret-val { color:#63b3ed; }
 html[data-theme="dark"] .sor-ret-lbl { color:var(--ork-text-muted,#a0aec0); }
 html[data-theme="dark"] .sor-ret-sub { color:var(--ork-text,#e2e8f0); }
@@ -2104,7 +2125,7 @@ html[data-theme="dark"] .sor-ret-sub { color:var(--ork-text,#e2e8f0); }
 #sor-longevity-chart {
   flex: 1 1 400px;
   min-width: 300px;
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 8px;
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   padding: 12px;
@@ -2576,8 +2597,10 @@ html[data-theme="dark"] .sor-parks-risk-med {
 }
 
 /* ---- Parks kingdom table ---- */
+/* Light mode gives the wrap a card surface; keep dark's original transparent ground so row striping is unchanged. */
 html[data-theme="dark"] .sor-parks-table-wrap {
   border-color: var(--ork-border);
+  background: transparent;
 }
 html[data-theme="dark"] .sor-parks-table tbody tr:nth-child(even) {
   background: var(--ork-bg-secondary);
@@ -2717,7 +2740,7 @@ html[data-theme="dark"] .sor-lon-pct {
 }
 .sor-awards-chart-card {
   padding: 16px 14px 12px;
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 8px;
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   display: flex;
@@ -2744,7 +2767,7 @@ html[data-theme="dark"] .sor-lon-pct {
   width: 100%;
 }
 .sor-awards-table-wrap {
-  background: #fff;
+  background: var(--ork-card-bg);
   border-radius: 8px;
   box-shadow: 0 1px 6px rgba(0,0,0,0.08);
   padding: 14px 16px 16px;
@@ -2770,7 +2793,7 @@ html[data-theme="dark"] .sor-lon-pct {
   letter-spacing: 0.04em;
   color: #4a5568;
   padding: 8px 10px;
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--ork-divider);
   background: transparent;
 }
 .sor-awards-table tbody td {
@@ -2784,7 +2807,7 @@ html[data-theme="dark"] .sor-lon-pct {
   background: #f8fafc;
 }
 .sor-awards-table tbody tr:hover {
-  background: #edf2f7;
+  background: var(--ork-bg-tertiary);
 }
 .sor-awards-recipient-link {
   color: #2980b9;
@@ -4471,10 +4494,19 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
   /* ----------------------------------------------------------------
      Build the query string from current filter values
   ---------------------------------------------------------------- */
+  // In-Person / Online / All: one page-level value, sent on every section request.
+  var _sorAttendanceType = 'all';
+  var SOR_TYPE_NOTES = {
+    in_person: 'Showing in-person sign-ins only. Player status (new, returning, normal player, real joiner), longevity and park founding / retirement still use every sign-in. Award grants are not affected.',
+    online: 'Showing online sign-ins only. Player status (new, returning, normal player, real joiner), longevity and park founding / retirement still use every sign-in. Award grants are not affected.'
+  };
+  var SOR_TYPE_LABELS = { all: 'All', in_person: 'In-Person', online: 'Online' };
+
   function sorBuildQs() {
     var start = document.getElementById('sor-start').value || '';
     var end   = document.getElementById('sor-end').value   || '';
-    var qs = 'start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end);
+    var qs = 'start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end)
+           + '&AttendanceType=' + encodeURIComponent(_sorAttendanceType);
 
     var sel = document.getElementById('sor-kingdoms');
     if (sel) {
@@ -4487,12 +4519,31 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
     return qs;
   }
 
+  // Mount the shared control. A change re-runs every section when the report has
+  // already been generated; otherwise it applies to the next Generate.
+  (function () {
+    var el = document.querySelector('#sor-type-group .orn-type-control');
+    if (!el || typeof window.ornAttendanceTypeControl !== 'function') return;
+    el.setAttribute('aria-labelledby', 'sor-type-label');
+    window.ornAttendanceTypeControl(el, {
+      value: 'all',
+      onChange: function (v) {
+        _sorAttendanceType = v;
+        var note = document.getElementById('sor-type-note');
+        if (note) note.textContent = SOR_TYPE_NOTES[_sorAttendanceType] || '';
+        var report = document.getElementById('sor-report');
+        if (report && report.style.display !== 'none') window.sorGenerate();
+      }
+    });
+  }());
+
   /* ----------------------------------------------------------------
      Status helpers
   ---------------------------------------------------------------- */
   var _sorDone     = 0;
   var _sorTotal    = 0; // FIX F: self-incremented in sorFetch, reset to 0 in sorGenerate
   var _sorTimeoutHandle = null; // FIX G: cancelable timeout for hung fetches
+  var _sorRunSeq = 0; // bumped per sorGenerate; responses from an older run are dropped
   window._sorPayloads = {}; var _sorPayloads = window._sorPayloads;
 
   function sorSetStatus(msg, cls) {
@@ -4520,7 +4571,7 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
   /* ----------------------------------------------------------------
      Fetch one section
   ---------------------------------------------------------------- */
-  function sorFetch(section, qs, renderFn) {
+  function sorFetch(section, qs, renderFn, seq) {
     // _sorTotal is set up-front from the job list in sorGenerate (the pool calls
     // sorFetch gradually, so self-incrementing here made the "x/N" denominator grow).
     // UIR resolves to `.../index.php?Route=` (query-param routing), so the
@@ -4534,11 +4585,13 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
         return r.json();
       })
       .then(function (data) {
+        if (seq !== _sorRunSeq) return; // stale: a newer run (e.g. a type change) has started
         _sorPayloads[section] = data;
         renderFn(data);
         sorSectionDone(section);
       })
       .catch(function (err) {
+        if (seq !== _sorRunSeq) return;
         sorSetStatus('Error loading ' + section + ': ' + err.message, 'sor-status-error');
         // Hide skeleton for sections that have one, so they don't hang
         var skMap = { parks: 'sor-parks-skeleton', players: 'sor-players-skeleton',
@@ -4592,6 +4645,7 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
     }
 
     // Reset counters and show report container
+    var runSeq = ++_sorRunSeq;
     _sorDone = 0;
     _sorTotal = 0; // reset; set to the job count once the pool is built (below)
     if (_sorTimeoutHandle) { clearTimeout(_sorTimeoutHandle); _sorTimeoutHandle = null; } // FIX G
@@ -4639,7 +4693,8 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
       var kdLabel = (sel && selKd.length === sel.options.length)
         ? 'All Kingdoms'
         : selKd.slice(0, 5).join(', ') + (selKd.length > 5 ? ' (+' + (selKd.length - 5) + ' more)' : '');
-      printMeta.textContent = 'Period: ' + start + '—' + end + '  •  Kingdoms: ' + kdLabel;
+      printMeta.textContent = 'Period: ' + start + '—' + end + '  •  Kingdoms: ' + kdLabel
+        + '  •  Attendance: ' + SOR_TYPE_LABELS[_sorAttendanceType];
     }
 
     // Fire 6 parallel requests
@@ -4662,10 +4717,11 @@ html[data-theme="dark"] .sor-awards-skeleton-pie {
     _sorTotal = _sorJobs.length; // fixed denominator so the "x/N" counter doesn't grow as the pool fires
     var _sorJobIdx = 0;
     function _sorRunNext() {
+      if (runSeq !== _sorRunSeq) return; // superseded run: stop feeding the pool
       if (_sorJobIdx >= _sorJobs.length) return;
       var job = _sorJobs[_sorJobIdx++];
       // sorFetch's .catch resolves, so the promise always settles → queue advances.
-      sorFetch(job[0], qs, job[1]).then(_sorRunNext, _sorRunNext);
+      sorFetch(job[0], qs, job[1], runSeq).then(_sorRunNext, _sorRunNext);
     }
     for (var _sc = 0; _sc < SOR_MAX_CONCURRENCY && _sc < _sorJobs.length; _sc++) _sorRunNext();
 

@@ -2,216 +2,362 @@
 
 class Controller
 {
+    public $data = [ ];
+    public $kingdom = null;
+    public $view = null;
+    public $method = null;
+    public $action = null;
+    public $settings = null;
+    public $session = null;
+    public $template = null;
 
-	var $data = [ ];
-	var $kingdom = null;
-	var $view = null;
-	var $method = null;
-	var $action = null;
-	var $settings = null;
-	var $session = null;
-	var $template = null;
+    /** Session slot + lifetime for the memoised survey promotion banner. */
+    public const SURVEY_BANNER_CACHE_KEY = 'survey_banner_cache';
+    public const SURVEY_BANNER_TTL = 300;
 
-	public function __construct( $method = null, $action = null )
-	{
-		$this->method = is_null( $method ) ? 'index' : $method;
-		$this->action = $action;
+    /** Drop the memoised banner so the next page load recomputes it. */
+    protected function bust_survey_banner_cache(): void
+    {
+        unset($this->session->{self::SURVEY_BANNER_CACHE_KEY});
+    }
 
-		global $Settings, $Session, $Request;
-		$this->settings = $Settings;
-		$this->session = $Session;
-		$this->request = $Request;
+    /**
+     * The viewer's survey promotion banner and "Available Surveys" list, from
+     * one memoised entry (one candidate pass on a miss, zero queries on a hit).
+     * Same TTL and bust points as the banner: dismiss, draft save and submit.
+     *
+     * @return array{available: list<array<string, mixed>>, banner: ?array<string, mixed>}
+     */
+    protected function survey_surfaces(int $uid): array
+    {
+        $c = $this->session->{self::SURVEY_BANNER_CACHE_KEY};
+        if (
+            is_array($c)
+            && (int) ($c['uid'] ?? 0) === $uid
+            && array_key_exists('available', $c)
+            && (time() - (int) ($c['at'] ?? 0)) < self::SURVEY_BANNER_TTL
+        ) {
+            return ['available' => $c['available'], 'banner' => $c['banner']];
+        }
+        $this->load_model('Survey');
+        $s = $this->Survey->available_and_banner_for($uid);
+        $this->session->{self::SURVEY_BANNER_CACHE_KEY} = [
+            'uid'       => $uid,
+            'at'        => time(),
+            'banner'    => $s['banner'],
+            'available' => $s['available'],
+        ];
+        return $s;
+    }
 
-		$this->load_model( $this->controller_class() );
+    // Status 5 is NoAuthorization -- "you are not allowed to do that". It is NOT
+    // "your session expired". Controllers uniformly mapped it to a redirect to
+    // Login/login/..., so a still-logged-in officer who hit a permission boundary
+    // was dropped on a bare login page with no message and read it as having been
+    // logged out. It paired especially badly with pages that render every control
+    // and only reject the click server-side.
+    //
+    // Only genuinely unauthenticated visitors are sent to log in; everyone else
+    // gets told what actually happened.
+    public function no_authorization($login_route, $detail = null)
+    {
+        if (!isset($this->session->user_id) || (int) $this->session->user_id <= 0) {
+            header('Location: ' . UIR . 'Login/login/' . ltrim($login_route, '/'));
+            exit;
+        }
+        $message = (is_string($detail) && trim($detail) !== '')
+            ? trim($detail)
+            : 'You do not have permission to perform that action.';
+        $this->data[ 'Error' ] = $message;
+        return $message;
+    }
 
-		$this->Report = new APIModel( 'Report' );
-		$this->Search = new JSONModel( 'Search' );
-		$this->data[ 'no_index' ] = false;
+    /**
+     * Gate a page behind login. Logged in: returns true, carry on. Logged out:
+     * remembers $return_route so Login brings the visitor straight back, then
+     * either redirects to Login (no $preview, today's behaviour everywhere)
+     * or, with $preview, renders the LoginRequired template and returns false
+     * (the caller returns at once).
+     *
+     * A preview is what a page can say about itself to someone who is not
+     * logged in: a person deciding whether to log in, or a chat app's link
+     * crawler building an embed (those are never logged in, so without this
+     * every gated link embeds as the login page's generic card). The same
+     * render serves both, so there is no user-agent list to keep current.
+     *
+     * $preview is an array, or a callable returning one so the lookup only
+     * runs for logged-out visitors:
+     *   og      => array for ork_og_meta_tags() (title/description/url/image)
+     *   kicker  => small line above the heading, e.g. 'Park Sign-in'
+     *   heading => the thing itself, e.g. the park or event name
+     *   lines   => short plain-text lines under it (credits, time left, why
+     *              a link is unusable)
+     *   image   => heraldry/photo URL shown beside the heading, or ''
+     *   button  => label for the Log in button (default 'Log in to continue')
+     */
+    public function require_login($return_route, $preview = null)
+    {
+        if (isset($this->session->user_id) && (int)$this->session->user_id > 0) {
+            return true;
+        }
+        $this->session->location = ltrim((string)$return_route, '/');
+        if (is_callable($preview)) {
+            $preview = $preview();
+        }
+        if (!is_array($preview)) {
+            header('Location: ' . UIR . 'Login/login');
+            exit;
+        }
+        $this->data['og']         = is_array($preview['og'] ?? null) ? $preview['og'] : array();
+        $this->data['no_index']   = true;
+        $this->data['page_title'] = (string)($preview['og']['title'] ?? $preview['heading'] ?? 'Login required');
+        $this->data['preview']    = array(
+            'kicker'  => (string)($preview['kicker'] ?? ''),
+            'heading' => (string)($preview['heading'] ?? $this->data['page_title']),
+            'lines'   => array_values(array_filter(array_map('strval', (array)($preview['lines'] ?? [])), 'strlen')),
+            'image'   => (string)($preview['image'] ?? ''),
+            'button'  => (string)($preview['button'] ?? 'Log in to continue'),
+        );
+        $this->template = 'LoginRequired.tpl';
+        return false;
+    }
 
-		if (get_class( $this ) == "Controller") {
-			$this->data[ 'page_title' ] = "Home";
-		} else {
-			$this->data[ 'page_title' ] = $this->method;
-		}
-		$this->data['LoggedIn'] = isset($this->session->user_id);
+    public function __construct($method = null, $action = null)
+    {
+        $this->method = is_null($method) ? 'index' : $method;
+        $this->action = $action;
 
-		// Proactive stale-session check: if the session token no longer matches the DB,
-		// the user logged in on another device — clear session and redirect to login.
-		$_skipTokenCheck = in_array(get_class($this), [
-			'Controller_Login',
-			'Controller_SearchAjax',
-			'Controller_AttendanceAjax',
-			'Controller_EventAjax',
-			'Controller_KingdomAjax',
-			'Controller_ParkAjax',
-			'Controller_PlayerAjax',
-			'Controller_AdminAjax',
-			'Controller_WnAjax',
-		]);
-		if (!$_skipTokenCheck && isset($this->session->user_id) && isset($this->session->token)) {
-			global $DB;
-			$DB->Clear();
-			$_uid_check = (int)$this->session->user_id;
-			$_tok_check = $this->session->token;
-			$_rs = $DB->DataSet("SELECT token FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid_check} LIMIT 1");
-			if (!$_rs || !$_rs->Next() || $_rs->token !== $_tok_check) {
-				$_returnRoute = trim($_GET['Route'] ?? '');
-				unset($_SESSION['is_authorized_mundane_id']);
-				session_unset();
-				session_destroy();
-				$_returnParam = (strlen($_returnRoute) > 0 && strncasecmp($_returnRoute, 'Login', 5) !== 0)
-					? '&return=' . urlencode($_returnRoute)
-					: '';
-				header('Location: ' . UIR . 'Login/login&msg=session_replaced' . $_returnParam);
-				exit;
-			}
-			$DB->Clear();
-		}
+        global $Settings, $Session, $Request;
+        $this->settings = $Settings;
+        $this->session = $Session;
+        $this->request = $Request;
 
-		$_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
+        $this->load_model($this->controller_class());
 
-		// Viewer accessibility-font preferences — read once and surface to every template
-		$this->data['ViewerBasicFonts']    = 0;
-		$this->data['ViewerDyslexiaFonts'] = 0;
-		if ($_uid > 0) {
-			global $DB;
-			$DB->Clear();
-			$_prefRs = $DB->DataSet("SELECT basic_fonts, dyslexia_fonts FROM " . DB_PREFIX . "mundane WHERE mundane_id = {$_uid} LIMIT 1");
-			if ($_prefRs && $_prefRs->Next()) {
-				$this->data['ViewerBasicFonts']    = (int)$_prefRs->basic_fonts;
-				$this->data['ViewerDyslexiaFonts'] = (int)$_prefRs->dyslexia_fonts;
-			}
-			$DB->Clear();
-		}
+        $this->Report = new APIModel('Report');
+        $this->Search = new JSONModel('Search');
+        $this->data[ 'no_index' ] = false;
+        // Per-page OpenGraph overrides for link-preview cards (Discord etc.);
+        // rendered by ork_og_meta_tags() in the theme head.
+        $this->data[ 'og' ] = array();
+        // Per-page schema.org JSON-LD (search-engine structured data).
+        $this->data[ 'jsonld' ] = null;
 
-		$this->data[ 'controller_title' ] = get_class( $this );
-		$this->data[ 'path' ] = [ get_class( $this ), $method ];
+        if (get_class($this) == "Controller") {
+            $this->data[ 'page_title' ] = "Home";
+        } else {
+            $this->data[ 'page_title' ] = $this->method;
+        }
+        $this->data['LoggedIn'] = isset($this->session->user_id);
 
-		$this->data[ 'menu' ] = [ ];
-		$this->data[ 'menu' ][ 'home' ] = [ 'url' => UIR, 'display' => 'Home <i class="fas fa-home"></i> ', 'no-crumb' => 'no-crumb' ];
-		if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_ADMIN, null, null)) {
-			$this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin', 'display' => 'Admin Panel', 'no-crumb' => 'no-crumb' ];
-		}
+        // Proactive stale-session check: if the session token no longer matches the DB,
+        // the user logged in on another device — clear session and redirect to login.
+        $_skipTokenCheck = in_array(get_class($this), [
+            'Controller_Login',
+            'Controller_SearchAjax',
+            'Controller_AttendanceAjax',
+            'Controller_EventAjax',
+            'Controller_EventEmbed',
+            'Controller_KingdomAjax',
+            'Controller_ParkAjax',
+            'Controller_PlayerAjax',
+            'Controller_AdminAjax',
+            'Controller_WnAjax',
+            'Controller_DuesAjax',
+        ]);
+        if (!$_skipTokenCheck && isset($this->session->user_id) && isset($this->session->token)) {
+            $_uid_check = (int)$this->session->user_id;
+            $_tok_check = $this->session->token;
+            // Multi-device: per-request validation runs against ork_session (up to
+            // Authorization::MAX_SESSIONS_PER_USER concurrent device sessions), not
+            // the single vestigial ork_mundane.token
+            // slot. ValidateSessionByToken also enforces expiry and slides last_seen.
+            $_owner = Ork3::$Lib->authorization->ValidateSessionByToken($_tok_check);
+            if ($_owner === 0 || $_owner !== $_uid_check) {
+                $_returnRoute = trim($_GET['Route'] ?? '');
+                unset($_SESSION['is_authorized_mundane_id']);
+                session_unset();
+                session_destroy();
+                $_returnParam = (strlen($_returnRoute) > 0 && strncasecmp($_returnRoute, 'Login', 5) !== 0)
+                    ? '&return=' . urlencode($_returnRoute)
+                    : '';
+                header('Location: ' . UIR . 'Login/login&msg=session_replaced' . $_returnParam);
+                exit;
+            }
+        }
 
-		if ( isset( $this->session->kingdom_id ) ) {
-			$this->data[ 'menu' ][ 'kingdom' ] = [ 'url' => UIR . 'Kingdom/profile/' . $this->session->kingdom_id, 'display' => $this->session->kingdom_name ];
-			if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_KINGDOM, (int)$this->session->kingdom_id, AUTH_EDIT)) {
-				$this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/kingdom/' . $this->session->kingdom_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
-			}
-		}
+        $_uid = isset($this->session->user_id) ? (int)$this->session->user_id : 0;
 
-		if ( isset( $this->session->park_id ) ) {
-			$this->data[ 'menu' ][ 'park' ] = [ 'url' => UIR . 'Park/profile/' . $this->session->park_id, 'display' => $this->session->park_name ];
-			if ($_uid > 0 && Ork3::$Lib->authorization->HasAuthority($_uid, AUTH_PARK, (int)$this->session->park_id, AUTH_EDIT)) {
-				$this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/park/' . $this->session->park_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
-			}
-		}
-		// HasAuthority uses the auth ORM which shares the global DB connection.
-		// Clear after all auth checks so subclass methods start with a clean DB state.
-		global $DB; $DB->Clear();
-	}
+        // Viewer accessibility-font preferences — read once and surface to every template
+        $this->data['ViewerBasicFonts']    = 0;
+        $this->data['ViewerDyslexiaFonts'] = 0;
+        $this->data['ShowWhatsNew']        = false;
+        $this->data['WhatsNewRelease']     = null;
+        // Dues expiry notice (class.DuesNotice.php): null, or the classified
+        // notice plus its Message and dismiss Key. default.theme renders it as
+        // the site banner on every page; the player's own profile renders it
+        // as an alert. Dismissing hides only the banner, for this session and
+        // this Key, so a renewal or the slide from expiring to lapsed shows again.
+        $this->data['DuesNotice']          = null;
+        $this->data['DuesNoticeDismissed'] = false;
+        if ($_uid > 0) {
+            $this->load_model('Player');
+            $prefs = $this->Player->get_viewer_preferences($_uid);
+            $this->data['ViewerBasicFonts']    = (int) ($prefs['BasicFonts'] ?? 0);
+            $this->data['ViewerDyslexiaFonts'] = (int) ($prefs['DyslexiaFonts'] ?? 0);
 
-	public function load_model( $name )
-	{
-		if ( file_exists( DIR_MODEL . 'model.' . $name . '.php' ) ) {
-			require_once( DIR_MODEL . 'model.' . $name . '.php' );
-			$model_name = 'Model_' . $name;
-			$this->$name = new $model_name();
-		}
-	}
+            require_once(DIR_UI . 'whats_new_content.php');
+            foreach ($WHATS_NEW_ITEMS as $_release) {
+                if ($_release['date'] === WHATS_NEW_VERSION) {
+                    $this->data['WhatsNewRelease'] = $_release;
+                    break;
+                }
+            }
+            if ($this->data['WhatsNewRelease'] !== null) {
+                $this->data['ShowWhatsNew'] = !$this->Player->get_whats_new_seen($_uid, WHATS_NEW_VERSION);
+            }
 
-	public function __call( $method, $action )
-	{
-	}
+            $_standing = $this->Player->get_dues_standing($_uid);
+            $_notice   = DuesNotice::classify($_standing['DuesUntil'], (bool) $_standing['DuesForLife']);
+            if ($_notice !== null) {
+                $_notice['Message'] = DuesNotice::message($_notice);
+                $_notice['Key']     = DuesNotice::dismissKey($_notice);
+                $this->data['DuesNotice']          = $_notice;
+                $this->data['DuesNoticeDismissed'] = (string) ($this->session->dues_notice_dismissed ?? '') === $_notice['Key'];
+            }
+        }
 
-	public function encode_image_file( $tmpname )
-	{
-		$imgbinary = fread( fopen( $tmpname, "r" ), filesize( $tmpname ) );
-		return base64_encode( $imgbinary );
-	}
+        // Survey promotion banner — the one show_banner survey the viewer is
+        // eligible for and has not dismissed. This is NOT a single lookup: it
+        // reads the player, fetches up to ten candidate surveys and walks each
+        // one through eligibility (tenure, participation, scope), so it is
+        // memoised per viewer in the session for SURVEY_BANNER_TTL seconds
+        // rather than recomputed on every page load. Controller_SurveyAjax
+        // busts the entry when the viewer dismisses a banner or submits a
+        // response, so those stay immediate. Skipped on Ajax controllers so
+        // the banner never rides along on a JSON response.
+        // The same entry carries the "Available Surveys" list (SurveyAvailable),
+        // which the own-profile sidebar renders server-side.
+        $this->data['SurveyBanner'] = null;
+        $this->data['SurveyAvailable'] = [];
+        if ($_uid > 0 && substr(get_class($this), -4) !== 'Ajax') {
+            $_surveys = $this->survey_surfaces($_uid);
+            $this->data['SurveyBanner'] = $_surveys['banner'];
+            $this->data['SurveyAvailable'] = $_surveys['available'];
+        }
 
-	public function index( $action = null )
-	{
-		// Determine the logged-in user's home kingdom from their profile in the DB.
-		// Fall back to the session-cached value only when not logged in.
-		if ( $this->data['LoggedIn'] && isset( $this->session->user_id ) ) {
-			global $DB;
-			$uid = (int) $this->session->user_id;
-			$hkRow = $DB->DataSet(
-				"SELECT p.kingdom_id, k.parent_kingdom_id FROM ork_mundane m
-				 INNER JOIN ork_park p ON p.park_id = m.park_id
-				 INNER JOIN ork_kingdom k ON k.kingdom_id = p.kingdom_id
-				 WHERE m.mundane_id = {$uid} LIMIT 1"
-			);
-			if ($hkRow && $hkRow->Size() > 0 && $hkRow->Next()) {
-				$this->data['UserKingdomId']       = (int) $hkRow->kingdom_id;
-				$this->data['UserParentKingdomId'] = (int) $hkRow->parent_kingdom_id;
-			} else {
-				$this->data['UserKingdomId']       = 0;
-				$this->data['UserParentKingdomId'] = 0;
-			}
-		} else {
-			$this->data['UserKingdomId'] = 0;
-		}
+        $this->data[ 'controller_title' ] = get_class($this);
+        $this->data[ 'path' ] = [ get_class($this), $method ];
 
-		unset( $this->session->kingdom_id );
-		unset( $this->session->park_id );
-		unset( $this->session->kingdom_name );
-		unset( $this->session->park_name );
-		$this->data[ 'Tournaments' ] = $this->Report->TournamentReport( [ 'Limit' => 15 ] );
-		$this->data[ 'ActiveKingdomSummary' ] = $this->Report->GetActiveKingdomsSummary();
-		$this->load_model( 'Recap' );
-		$this->data[ 'week_recap' ] = $this->Recap->get();
-		$eventSummary = $this->Search->Search_Event( null, null, 0, null, null, 15, null, true );
-		if (!empty($eventSummary)) {
-			global $DB;
-			$detailIds = array_filter(array_column($eventSummary, 'NextDetailId'));
-			if (!empty($detailIds)) {
-				$idList = implode(',', array_map('intval', $detailIds));
-				$DB->Clear();
-				$rsvpResult = $DB->DataSet("SELECT event_calendardetail_id, COUNT(*) AS cnt FROM " . DB_PREFIX . "event_rsvp WHERE event_calendardetail_id IN ($idList) GROUP BY event_calendardetail_id");
-				$rsvpCounts = [];
-				if ($rsvpResult) {
-					while ($rsvpResult->Next()) {
-						$rsvpCounts[(int)$rsvpResult->event_calendardetail_id] = (int)$rsvpResult->cnt;
-					}
-				}
-				foreach ($eventSummary as &$ev) {
-					$ev['RsvpCount'] = $rsvpCounts[(int)($ev['NextDetailId'] ?? 0)] ?? 0;
-				}
-				unset($ev);
-			}
-		}
-		$this->data[ 'EventSummary' ] = $eventSummary;
-		$this->data[ 'menu' ][ 'home' ] = [ 'url' => UIR, 'display' => 'Home <i class="fas fa-home"></i> ', 'no-crumb' => 'no-crumb' ];
-		if ($this->data['LoggedIn']) {
-			$this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin', 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
-		}
-		unset( $this->data[ 'menu' ][ 'kingdom' ] );
-		unset( $this->data[ 'menu' ][ 'park' ] );
-	}
+        $this->data[ 'menu' ] = [ ];
+        $this->data[ 'menu' ][ 'home' ] = [ 'url' => UIR, 'display' => 'Home <i class="fas fa-home"></i> ', 'no-crumb' => 'no-crumb' ];
+        $this->load_model('Authorization');
+        $this->data['NavIsOrkAdmin'] = $_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_ADMIN, 0, AUTH_ADMIN);
+        if ($_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_ADMIN, null, null)) {
+            $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin', 'display' => 'Admin Panel', 'no-crumb' => 'no-crumb' ];
+        }
 
-	public function view()
-	{
-		$V = null;
-		if ( is_null( $this->view ) ) {
-			logtrace( "Controller: view(): $this->template, " . $this->controller_class() . ", $this->method, $this->action", null );
-			$V = new View( $this->template, $this->controller_class(), $this->method, $this->action );
-			$V->__setttings = $this->settings;
-		} else {
-			logtrace( "Controller: view(): $this->template, " . $this->controller_class() . ", $this->method, $this->action", null );
-			$V = new View( $this->template, $this->controller_class(), $this->method, $this->action );
-			$V->__setttings = $this->settings;
-		}
-		logtrace( "Controller view(): data, {$this->kingdom}", $this->data );
-		$CONTENT = $V->view( $this->data, $this->kingdom );
+        if (isset($this->session->kingdom_id)) {
+            $this->data[ 'menu' ][ 'kingdom' ] = [ 'url' => UIR . 'Kingdom/profile/' . $this->session->kingdom_id, 'display' => $this->session->kingdom_name ];
+            if ($_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_KINGDOM, (int)$this->session->kingdom_id, AUTH_EDIT)) {
+                $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/kingdom/' . $this->session->kingdom_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
+            }
+        }
 
-		return $CONTENT;
-	}
+        if (isset($this->session->park_id)) {
+            $this->data[ 'menu' ][ 'park' ] = [ 'url' => UIR . 'Park/profile/' . $this->session->park_id, 'display' => $this->session->park_name ];
+            if ($_uid > 0 && $this->Authorization->has_authority($_uid, AUTH_PARK, (int)$this->session->park_id, AUTH_EDIT)) {
+                $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin/park/' . $this->session->park_id, 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
+            }
+        }
+        // HasAuthority uses the auth ORM which shares the global DB connection.
+        // Clear after all auth checks so subclass methods start with a clean DB state.
+        $this->Authorization->clear_db_after_auth_checks();
+    }
 
-	public function controller_class()
-	{
-		$parts = explode( '_', get_class( $this ) );
-		return implode( '_', array_slice( $parts, 1 ) );
-	}
+    public function load_model($name)
+    {
+        if (file_exists(DIR_MODEL . 'model.' . $name . '.php')) {
+            require_once(DIR_MODEL . 'model.' . $name . '.php');
+            $model_name = 'Model_' . $name;
+            $this->$name = new $model_name();
+        }
+    }
+
+    public function __call($method, $action)
+    {
+    }
+
+    public function encode_image_file($tmpname)
+    {
+        $imgbinary = fread(fopen($tmpname, "r"), filesize($tmpname));
+        return base64_encode($imgbinary);
+    }
+
+    public function index($action = null)
+    {
+        // Determine the logged-in user's home kingdom from their profile in the DB.
+        // Fall back to the session-cached value only when not logged in.
+        if ($this->data['LoggedIn'] && isset($this->session->user_id)) {
+            $uid = (int) $this->session->user_id;
+            $this->load_model('Player');
+            $home = $this->Player->get_home_kingdom($uid);
+            $this->data['UserKingdomId']       = (int) ($home['KingdomId'] ?? 0);
+            $this->data['UserParentKingdomId'] = (int) ($home['ParentKingdomId'] ?? 0);
+        } else {
+            $this->data['UserKingdomId'] = 0;
+        }
+
+        unset($this->session->kingdom_id);
+        unset($this->session->park_id);
+        unset($this->session->kingdom_name);
+        unset($this->session->park_name);
+        $this->data[ 'Tournaments' ] = $this->Report->TournamentReport([ 'Limit' => 15 ]);
+        $this->data[ 'ActiveKingdomSummary' ] = $this->Report->GetActiveKingdomsSummary();
+        $this->load_model('Recap');
+        $this->data[ 'week_recap' ] = $this->Recap->get();
+        $eventSummary = $this->Search->Search_Event(null, null, 0, null, null, 15, null, true);
+        if (!empty($eventSummary)) {
+            $detailIds = array_filter(array_column($eventSummary, 'NextDetailId'));
+            if (!empty($detailIds)) {
+                $this->load_model('Event');
+                $rsvpCounts = $this->Event->get_rsvp_total_counts_batch($detailIds);
+                foreach ($eventSummary as &$ev) {
+                    $ev['RsvpCount'] = $rsvpCounts[(int)($ev['NextDetailId'] ?? 0)] ?? 0;
+                }
+                unset($ev);
+            }
+        }
+        $this->data[ 'EventSummary' ] = $eventSummary;
+        $this->data[ 'menu' ][ 'home' ] = [ 'url' => UIR, 'display' => 'Home <i class="fas fa-home"></i> ', 'no-crumb' => 'no-crumb' ];
+        if ($this->data['LoggedIn']) {
+            $this->data[ 'menu' ][ 'admin' ] = [ 'url' => UIR . 'Admin', 'display' => 'Admin Panel <i class="fas fa-cog"></i>', 'no-crumb' => 'no-crumb' ];
+        }
+        unset($this->data[ 'menu' ][ 'kingdom' ]);
+        unset($this->data[ 'menu' ][ 'park' ]);
+    }
+
+    public function view()
+    {
+        $V = null;
+        if (is_null($this->view)) {
+            logtrace("Controller: view(): $this->template, " . $this->controller_class() . ", $this->method, $this->action", null);
+            $V = new View($this->template, $this->controller_class(), $this->method, $this->action);
+            $V->__setttings = $this->settings;
+        } else {
+            logtrace("Controller: view(): $this->template, " . $this->controller_class() . ", $this->method, $this->action", null);
+            $V = new View($this->template, $this->controller_class(), $this->method, $this->action);
+            $V->__setttings = $this->settings;
+        }
+        logtrace("Controller view(): data, {$this->kingdom}", $this->data);
+        $CONTENT = $V->view($this->data, $this->kingdom);
+
+        return $CONTENT;
+    }
+
+    public function controller_class()
+    {
+        $parts = explode('_', get_class($this));
+        return implode('_', array_slice($parts, 1));
+    }
 }

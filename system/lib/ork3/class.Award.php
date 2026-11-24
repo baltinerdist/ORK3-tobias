@@ -1,41 +1,103 @@
 <?php
 
-class Award  extends Ork3 {
+class Award extends Ork3
+{
+    public function __construct()
+    {
+        parent::__construct();
+        $this->award = new yapo($this->db, DB_PREFIX . 'award');
+    }
 
-	public function __construct() {
-		parent::__construct();
-		$this->award = new yapo($this->db, DB_PREFIX . 'award');
-	}
+    /**
+     * Map of ladder award_id => metadata used to detect when a player has already reached
+     * the top of that ladder or earned its Master-peerage companion award.
+     *
+     * Sole order→master source of truth (P3-R2). UI must not fork this map.
+     */
+    public static function GetLadderMasterMap()
+    {
+        return [
+            21  => ['MasterAwardIds' => [1],   'LadderName' => 'Order of the Rose',    'MasterName' => 'Master Rose',    'MaxRank' => 10],
+            22  => ['MasterAwardIds' => [2],   'LadderName' => 'Order of the Smith',   'MasterName' => 'Master Smith',   'MaxRank' => 10],
+            23  => ['MasterAwardIds' => [3],   'LadderName' => 'Order of the Lion',    'MasterName' => 'Master Lion',    'MaxRank' => 10],
+            24  => ['MasterAwardIds' => [4],   'LadderName' => 'Order of the Owl',     'MasterName' => 'Master Owl',     'MaxRank' => 10],
+            25  => ['MasterAwardIds' => [5],   'LadderName' => 'Order of the Dragon',  'MasterName' => 'Master Dragon',  'MaxRank' => 10],
+            26  => ['MasterAwardIds' => [6],   'LadderName' => 'Order of the Garber',  'MasterName' => 'Master Garber',  'MaxRank' => 10],
+            27  => ['MasterAwardIds' => [12],  'LadderName' => 'Order of the Warrior', 'MasterName' => 'Warlord',        'MaxRank' => 10],
+            28  => ['MasterAwardIds' => [7],   'LadderName' => 'Order of the Jovius',  'MasterName' => 'Master Jovius',  'MaxRank' => 10],
+            29  => ['MasterAwardIds' => [9],   'LadderName' => 'Order of the Mask',    'MasterName' => 'Master Mask',    'MaxRank' => 10],
+            30  => ['MasterAwardIds' => [8],   'LadderName' => 'Order of the Zodiac',  'MasterName' => 'Master Zodiac',  'MaxRank' => 12],
+            32  => ['MasterAwardIds' => [10],  'LadderName' => 'Order of the Hydra',   'MasterName' => 'Master Hydra',   'MaxRank' => 10],
+            33  => ['MasterAwardIds' => [11],  'LadderName' => 'Order of the Griffin', 'MasterName' => 'Master Griffin', 'MaxRank' => 10],
+            239 => ['MasterAwardIds' => [240], 'LadderName' => 'Order of the Crown',   'MasterName' => 'Master Crown',   'MaxRank' => 10],
+            243 => ['MasterAwardIds' => [244], 'LadderName' => 'Order of Battle',      'MasterName' => 'Battlemaster',   'MaxRank' => 10],
+        ];
+    }
 
-	/**
-	 * Map of ladder award_id => metadata used to detect when a player has already reached
-	 * the top of that ladder or earned its Master-peerage companion award.
-	 *
-	 * Keep in sync with the $pnOrderToMaster / $pnOrderNames maps in
-	 * orkui/template/revised-frontend/Playernew_index.tpl (Awards tab).
-	 */
-	public static function GetLadderMasterMap() {
-		return [
-			21  => ['MasterAwardIds' => [1],   'LadderName' => 'Order of the Rose',    'MasterName' => 'Master Rose',    'MaxRank' => 10],
-			22  => ['MasterAwardIds' => [2],   'LadderName' => 'Order of the Smith',   'MasterName' => 'Master Smith',   'MaxRank' => 10],
-			23  => ['MasterAwardIds' => [3],   'LadderName' => 'Order of the Lion',    'MasterName' => 'Master Lion',    'MaxRank' => 10],
-			24  => ['MasterAwardIds' => [4],   'LadderName' => 'Order of the Owl',     'MasterName' => 'Master Owl',     'MaxRank' => 10],
-			25  => ['MasterAwardIds' => [5],   'LadderName' => 'Order of the Dragon',  'MasterName' => 'Master Dragon',  'MaxRank' => 10],
-			26  => ['MasterAwardIds' => [6],   'LadderName' => 'Order of the Garber',  'MasterName' => 'Master Garber',  'MaxRank' => 10],
-			27  => ['MasterAwardIds' => [12],  'LadderName' => 'Order of the Warrior', 'MasterName' => 'Warlord',        'MaxRank' => 10],
-			28  => ['MasterAwardIds' => [7],   'LadderName' => 'Order of the Jovius',  'MasterName' => 'Master Jovius',  'MaxRank' => 10],
-			29  => ['MasterAwardIds' => [9],   'LadderName' => 'Order of the Mask',    'MasterName' => 'Master Mask',    'MaxRank' => 10],
-			30  => ['MasterAwardIds' => [8],   'LadderName' => 'Order of the Zodiac',  'MasterName' => 'Master Zodiac',  'MaxRank' => 12],
-			32  => ['MasterAwardIds' => [10],  'LadderName' => 'Order of the Hydra',   'MasterName' => 'Master Hydra',   'MaxRank' => 10],
-			33  => ['MasterAwardIds' => [11],  'LadderName' => 'Order of the Griffin', 'MasterName' => 'Master Griffin', 'MaxRank' => 10],
-			239 => ['MasterAwardIds' => [240], 'LadderName' => 'Order of the Crown',   'MasterName' => 'Master Crown',   'MaxRank' => 10],
-			243 => ['MasterAwardIds' => [244], 'LadderName' => 'Order of Battle',      'MasterName' => 'Battlemaster',   'MaxRank' => 10],
-		];
-	}
+    /**
+     * class_id => Paragon award_id (Class Levels / My Amtgard badge display).
+     *
+     * @return array<int, int>
+     */
+    public static function GetClassParagonMap(): array
+    {
+        return [
+            1 => 37, 2 => 38, 3 => 39, 4 => 40, 5 => 41, 6 => 241, 7 => 42, 8 => 43,
+            9 => 44, 10 => 45, 11 => 46, 12 => 47, 14 => 242, 15 => 49, 16 => 50, 17 => 51,
+        ];
+    }
 
-    public function LookupAward($request) {
+    /**
+     * Knighthood award_id => short name (milestones + belt detection).
+     * Belt image URLs remain presentation-layer (template).
+     *
+     * @return array<int, string>
+     */
+    public static function GetKnightAwardMap(): array
+    {
+        return [
+            17 => 'Flame',
+            18 => 'Crown',
+            19 => 'Serpent',
+            20 => 'Sword',
+            245 => 'Battle',
+        ];
+    }
+
+    /**
+     * Flatten MasterAwardIds from GetLadderMasterMap (includes Warlord 12).
+     *
+     * @return list<int>
+     */
+    public static function GetMasterAwardIds(): array
+    {
+        $ids = [];
+        foreach (self::GetLadderMasterMap() as $info) {
+            foreach ((array)($info['MasterAwardIds'] ?? []) as $masterId) {
+                $masterId = (int)$masterId;
+                if ($masterId > 0) {
+                    $ids[$masterId] = true;
+                }
+            }
+        }
+
+        return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * Paragon award_ids (values of GetClassParagonMap).
+     *
+     * @return list<int>
+     */
+    public static function GetParagonAwardIds(): array
+    {
+        return array_values(array_unique(array_map('intval', array_values(self::GetClassParagonMap()))));
+    }
+
+    public function LookupAward($request)
+    {
         if (valid_id($request['KingdomId']) && valid_id($request['AwardId'])) {
-        	$kingdomaward = new yapo($this->db, DB_PREFIX . 'kingdomaward');
+            $kingdomaward = new yapo($this->db, DB_PREFIX . 'kingdomaward');
             $kingdomaward->clear();
             $kingdomaward->kingdom_id = $request['KingdomId'];
             $kingdomaward->award_id = $request['AwardId'];
@@ -44,11 +106,12 @@ class Award  extends Ork3 {
                 // don't create an orphaned award grant against a stale id.
                 return array(0, $request['AwardId']);
             }
-			return array($kingdomaward->kingdomaward_id, $kingdomaward->award_id);
+            return array($kingdomaward->kingdomaward_id, $kingdomaward->award_id);
         }
     }
 
-    public function LookupKingdomAward($request) {
+    public function LookupKingdomAward($request)
+    {
         if (valid_id($request['KingdomAwardId'])) {
             $kingdomaward = new yapo($this->db, DB_PREFIX . 'kingdomaward');
             $kingdomaward->clear();
@@ -58,264 +121,641 @@ class Award  extends Ork3 {
         }
     }
 
-	public function GetAwardList($request) {
-		if ($request['IsLadder'] == 'Ladder') {
-			$ladder_clause = " and ka.is_ladder = 1";
-		} else if ($request['IsLadder'] == 'NonLadder') {
-			$ladder_clause = " and ka.is_ladder = 0";
-		}
-		if ($request['IsTitle'] == 'Title') {
-			$ladder_clause = " and is_title = 1";
-		} else if ($request['IsTitle'] == 'NonTitle') {
-			$ladder_clause = " and is_title = 0";
-		}
-    if (isset($request['OfficerRole']) && $request['OfficerRole'] == 'Awards') {
-      $officer_role_clause = " and officer_role = 'none'"; 
-    } else if (isset($request['OfficerRole']) && $request['OfficerRole'] == 'Officers') {
-      $officer_role_clause = " and officer_role != 'none'"; 
-    } 
-		$sql = "select award_id, name, a.award_id, a.is_ladder, is_title, title_class, a.officer_role, a.peerage
+    public function GetAwardList($request)
+    {
+        if ($request['IsLadder'] == 'Ladder') {
+            $ladder_clause = " and ka.is_ladder = 1";
+        } elseif ($request['IsLadder'] == 'NonLadder') {
+            $ladder_clause = " and ka.is_ladder = 0";
+        }
+        if ($request['IsTitle'] == 'Title') {
+            $ladder_clause = " and is_title = 1";
+        } elseif ($request['IsTitle'] == 'NonTitle') {
+            $ladder_clause = " and is_title = 0";
+        }
+        if (isset($request['OfficerRole']) && $request['OfficerRole'] == 'Awards') {
+            $officer_role_clause = " and officer_role = 'none'";
+        } elseif (isset($request['OfficerRole']) && $request['OfficerRole'] == 'Officers') {
+            $officer_role_clause = " and officer_role != 'none'";
+        }
+        $sql = "select award_id, name, a.award_id, a.is_ladder, is_title, title_class, a.officer_role, a.peerage
 					from " . DB_PREFIX . "award a 
 					where 1
 						$ladder_clause
 						$title_clause
             $officer_role_clause
 					order by is_ladder, a.is_title, a.title_class desc, a.name";
-		$r = $this->db->query($sql);
+        $r = $this->db->query($sql);
 
-		$response = array();
-    $response['Awards'] = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$response['Awards'][] = array(
-					'KingdomAwardId' => $r->award_id,
-					'KingdomAwardName' => $r->name,
-					'ReignLimit' => 0,
-					'MonthLimit' => 0,
-					'AwardName' => $r->name,
-					'AwardId' => $r->award_id,
-					'IsLadder' => $r->is_ladder,
-					'IsTitle' => $r->is_title,
-					'TitleClass' => $r->title_class,
-          			'OfficerRole' => $r->officer_role,
-					'Peerage' => $r->peerage
-				);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter(NULL, 'Problem processing your request.');
-		}
-		return $response;
-	}
+        $response = array();
+        $response['Awards'] = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $response['Awards'][] = array(
+                    'KingdomAwardId' => $r->award_id,
+                    'KingdomAwardName' => $r->name,
+                    'ReignLimit' => 0,
+                    'MonthLimit' => 0,
+                    'AwardName' => $r->name,
+                    'AwardId' => $r->award_id,
+                    'IsLadder' => $r->is_ladder,
+                    'IsTitle' => $r->is_title,
+                    'TitleClass' => $r->title_class,
+                      'OfficerRole' => $r->officer_role,
+                    'Peerage' => $r->peerage
+                );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter(null, 'Problem processing your request.');
+        }
+        return $response;
+    }
 
-	/**
-	 * Awards a "Custom Title" may be aliased to: peerage-ladder rungs and other titles.
-	 * Drives the Add Award modal's "Alias of" dropdown on the player, kingdom, and park
-	 * profiles. The list is global (not kingdom-specific), so it is shared across all three.
-	 *
-	 * @return array ['Peerage' => [...], 'Titles' => [...]] of ['AwardId','Name','Peerage'] rows
-	 */
-	public function fetch_custom_title_alias_options() {
-		$sql = "SELECT award_id, name, peerage, is_title
+    /**
+     * Awards a "Custom Title" may be aliased to: peerage-ladder rungs and other titles.
+     * Drives the Add Award modal's "Alias of" dropdown on the player, kingdom, and park
+     * profiles. The list is global (not kingdom-specific), so it is shared across all three.
+     *
+     * @return array ['Peerage' => [...], 'Titles' => [...]] of ['AwardId','Name','Peerage'] rows
+     */
+    public function fetch_custom_title_alias_options()
+    {
+        $sql = "SELECT award_id, name, peerage, is_title
 			FROM " . DB_PREFIX . "award
 			WHERE officer_role = 'none'
 			  AND name <> 'Custom Title'
 			  AND name <> 'Custom Award'
 			  AND (peerage IN ('Page','Lords-Page','Squire','Man-At-Arms','Master','Knight') OR is_title = 1)
 			ORDER BY FIELD(peerage,'Knight','Master','Squire','Man-At-Arms','Lords-Page','Page') DESC, is_title DESC, name ASC";
-		$r = $this->db->query($sql);
-		$peerage = []; $titles = [];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$row = [
-					'AwardId' => (int)$r->award_id,
-					'Name'    => $r->name,
-					'Peerage' => $r->peerage,
-				];
-				if (in_array($r->peerage, ['Page','Lords-Page','Squire','Man-At-Arms','Master','Knight'], true)) {
-					$peerage[] = $row;
-				} elseif ((int)$r->is_title === 1) {
-					$titles[] = $row;
-				}
-			}
-		}
-		return ['Peerage' => $peerage, 'Titles' => $titles];
-	}
+        $r = $this->db->query($sql);
+        $peerage = [];
+        $titles = [];
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $row = [
+                    'AwardId' => (int)$r->award_id,
+                    'Name'    => $r->name,
+                    'Peerage' => $r->peerage,
+                ];
+                if (in_array($r->peerage, ['Page','Lords-Page','Squire','Man-At-Arms','Master','Knight'], true)) {
+                    $peerage[] = $row;
+                } elseif ((int)$r->is_title === 1) {
+                    $titles[] = $row;
+                }
+            }
+        }
+        return ['Peerage' => $peerage, 'Titles' => $titles];
+    }
 
-	public function CreateAward($request) {
-		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_CREATE)) {
-			$this->log->Write('Award', $mundane_id, LOG_ADD, $request);
-			$this->award->clear();
-			$this->award->name = $request['Name'];
-			$this->award->is_ladder = $request['IsLadder'];
-			$this->award->is_title = $request['IsTitle'];
-			$this->award->title_class = $request['TitleClass'];
-			$this->award->peerage = $request['Peerage'];
-			$this->award->officer_role = $request['OfficerRole'];
-			$this->award->save();
-		} else {
-			return NoAuthorization();
-		}
-	}
+    public function CreateAward($request)
+    {
+        if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+                && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_CREATE)) {
+            $this->log->Write('Award', $mundane_id, LOG_ADD, $request);
+            $this->award->clear();
+            $this->award->name = $request['Name'];
+            $this->award->is_ladder = $request['IsLadder'];
+            $this->award->is_title = $request['IsTitle'];
+            $this->award->title_class = $request['TitleClass'];
+            $this->award->peerage = $request['Peerage'];
+            $this->award->officer_role = $request['OfficerRole'];
+            $this->award->save();
+        } else {
+            return NoAuthorization();
+        }
+    }
 
-	public function EditAward($request) {
-		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
-			$this->log->Write('Award', $mundane_id, LOG_EDIT, $request);
-			$this->award->clear();
-			$this->award->award_id = $request['AwardId'];
-			if ($this->kingdomaward->find()) {
-				$this->award->name = $request['Name'];
-				$this->award->is_ladder = $request['IsLadder'];
-				$this->award->is_title = $request['IsTitle'];
-				$this->award->title_class = $request['TitleClass'];
-				$this->award->peerage = $request['Peerage'];
-  				$this->award->officer_role = $request['OfficerRole'];
-				$this->award->award->save();
+    public function EditAward($request)
+    {
+        if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+                && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+            $this->log->Write('Award', $mundane_id, LOG_EDIT, $request);
+            $this->award->clear();
+            $this->award->award_id = $request['AwardId'];
+            if ($this->kingdomaward->find()) {
+                $this->award->name = $request['Name'];
+                $this->award->is_ladder = $request['IsLadder'];
+                $this->award->is_title = $request['IsTitle'];
+                $this->award->title_class = $request['TitleClass'];
+                $this->award->peerage = $request['Peerage'];
+                $this->award->officer_role = $request['OfficerRole'];
+                $this->award->award->save();
 
-			} else {
-				return InvalidParameter();
-			}
-		} else {
-			return NoAuthorization();
-		}
-	}
+            } else {
+                return InvalidParameter();
+            }
+        } else {
+            return NoAuthorization();
+        }
+    }
 
-	public function RemoveAward($request) {
-		if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
-			$this->log->Write('Award', $mundane_id, LOG_REMOVE, $request);
-			$this->award->award_id = $request['AwardId'];
-			if ($this->award->find()) {
-				$this->award->delete();
-			}
-			return Success();
-		}
-		return NoAuthorization();
-	}
+    public function RemoveAward($request)
+    {
+        if (($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+                && Ork3::$Lib->authorization->HasAuthority($mundane_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+            $this->log->Write('Award', $mundane_id, LOG_REMOVE, $request);
+            $this->award->award_id = $request['AwardId'];
+            if ($this->award->find()) {
+                $this->award->delete();
+            }
+            return Success();
+        }
+        return NoAuthorization();
+    }
 
-	public function create_system_awards() {
+    public function create_system_awards()
+    {
 
-		$this->create_award('Master Rose', 0, 1, 10, 'Master');
-		$this->create_award('Master Smith', 0, 1, 10, 'Master');
-		$this->create_award('Master Lion', 0, 1, 10, 'Master');
-		$this->create_award('Master Owl', 0, 1, 10, 'Master');
-		$this->create_award('Master Dragon', 0, 1, 10, 'Master');
-		$this->create_award('Master Garber', 0, 1, 10, 'Master');
-		$this->create_award('Master Jovius', 0, 1, 10);
-		$this->create_award('Master Zodiac', 0, 1, 10);
-		$this->create_award('Master Mask', 0, 1, 10);
-		$this->create_award('Master Hydra', 0, 1, 10);
-		$this->create_award('Master Griffin', 0, 1, 10);
-		$this->create_award('Warlord', 0, 1, 10, 'Master');
+        $this->create_award('Master Rose', 0, 1, 10, 'Master');
+        $this->create_award('Master Smith', 0, 1, 10, 'Master');
+        $this->create_award('Master Lion', 0, 1, 10, 'Master');
+        $this->create_award('Master Owl', 0, 1, 10, 'Master');
+        $this->create_award('Master Dragon', 0, 1, 10, 'Master');
+        $this->create_award('Master Garber', 0, 1, 10, 'Master');
+        $this->create_award('Master Jovius', 0, 1, 10);
+        $this->create_award('Master Zodiac', 0, 1, 10);
+        $this->create_award('Master Mask', 0, 1, 10);
+        $this->create_award('Master Hydra', 0, 1, 10);
+        $this->create_award('Master Griffin', 0, 1, 10);
+        $this->create_award('Warlord', 0, 1, 10, 'Master');
 
-		$this->create_award("Lord's Page", 0, 1, 5, 'Lords-Page');
-		$this->create_award('Man-at-Arms', 0, 1, 5, 'Man-at-Arms');
-		$this->create_award('Page', 0, 1, 5, 'Page');
-		$this->create_award('Squire', 0, 1, 15, 'Squire');
+        $this->create_award("Lord's Page", 0, 1, 5, 'Lords-Page');
+        $this->create_award('Man-at-Arms', 0, 1, 5, 'Man-at-Arms');
+        $this->create_award('Page', 0, 1, 5, 'Page');
+        $this->create_award('Squire', 0, 1, 15, 'Squire');
 
-		$this->create_award('Knight of the Flame', 0, 1, 20, 'Knight');
-		$this->create_award('Knight of the Crown', 0, 1, 20, 'Knight');
-		$this->create_award('Knight of the Serpent', 0, 1, 20, 'Knight');
-		$this->create_award('Knight of the Sword', 0, 1, 20, 'Knight');
+        $this->create_award('Knight of the Flame', 0, 1, 20, 'Knight');
+        $this->create_award('Knight of the Crown', 0, 1, 20, 'Knight');
+        $this->create_award('Knight of the Serpent', 0, 1, 20, 'Knight');
+        $this->create_award('Knight of the Sword', 0, 1, 20, 'Knight');
 
-		$this->create_award('Order of the Rose', 1, 0, 0);
-		$this->create_award('Order of the Smith',  1, 0, 0);
-		$this->create_award('Order of the Lion',  1, 0, 0);
-		$this->create_award('Order of the Owl',  1, 0, 0);
-		$this->create_award('Order of the Dragon',  1, 0, 0);
-		$this->create_award('Order of the Garber',  1, 0, 0);
-		$this->create_award('Order of the Warrior',  1, 0, 0);
-		$this->create_award('Order of the Jovius',  1, 0, 0);
-		$this->create_award('Order of the Mask',  1, 0, 0);
-		$this->create_award('Order of the Zodiac',  1, 0, 0);
-		$this->create_award('Order of the Walker in the Middle',  1, 0, 0);
-		$this->create_award('Order of the Hydra',  1, 0, 0);
-		$this->create_award('Order of the Griffin',  1, 0, 0);
-		$this->create_award('Order of the Flame',  1, 0, 0);
+        $this->create_award('Order of the Rose', 1, 0, 0);
+        $this->create_award('Order of the Smith', 1, 0, 0);
+        $this->create_award('Order of the Lion', 1, 0, 0);
+        $this->create_award('Order of the Owl', 1, 0, 0);
+        $this->create_award('Order of the Dragon', 1, 0, 0);
+        $this->create_award('Order of the Garber', 1, 0, 0);
+        $this->create_award('Order of the Warrior', 1, 0, 0);
+        $this->create_award('Order of the Jovius', 1, 0, 0);
+        $this->create_award('Order of the Mask', 1, 0, 0);
+        $this->create_award('Order of the Zodiac', 1, 0, 0);
+        $this->create_award('Order of the Walker in the Middle', 1, 0, 0);
+        $this->create_award('Order of the Hydra', 1, 0, 0);
+        $this->create_award('Order of the Griffin', 1, 0, 0);
+        $this->create_award('Order of the Flame', 1, 0, 0);
 
-		$this->create_award('Defender', 0, 1, 10);
-		$this->create_award('Weaponmaster', 0, 1, 10);
+        $this->create_award('Defender', 0, 1, 10);
+        $this->create_award('Weaponmaster', 0, 1, 10);
 
-		$this->create_award('Master Anti-Paladin', 0, 1, 10);
-		$this->create_award('Master Archer', 0, 1, 10);
-		$this->create_award('Master Assassin', 0, 1, 10);
-		$this->create_award('Master Barbarian', 0, 1, 10);
-		$this->create_award('Master Bard', 0, 1, 10);
-		$this->create_award('Master Druid', 0, 1, 10);
-		$this->create_award('Master Healer', 0, 1, 10);
-		$this->create_award('Master Monk', 0, 1, 10);
-		$this->create_award('Master Monster', 0, 1, 10);
-		$this->create_award('Master Paladin', 0, 1, 10);
-		$this->create_award('Master Peasant', 0, 1, 10);
-		$this->create_award('Master Raider', 0, 1, 10);
-		$this->create_award('Master Scout', 0, 1, 10);
-		$this->create_award('Master Warrior', 0, 1, 10);
-		$this->create_award('Master Wizard', 0, 1, 10);
+        $this->create_award('Master Anti-Paladin', 0, 1, 10);
+        $this->create_award('Master Archer', 0, 1, 10);
+        $this->create_award('Master Assassin', 0, 1, 10);
+        $this->create_award('Master Barbarian', 0, 1, 10);
+        $this->create_award('Master Bard', 0, 1, 10);
+        $this->create_award('Master Druid', 0, 1, 10);
+        $this->create_award('Master Healer', 0, 1, 10);
+        $this->create_award('Master Monk', 0, 1, 10);
+        $this->create_award('Master Monster', 0, 1, 10);
+        $this->create_award('Master Paladin', 0, 1, 10);
+        $this->create_award('Master Peasant', 0, 1, 10);
+        $this->create_award('Master Raider', 0, 1, 10);
+        $this->create_award('Master Scout', 0, 1, 10);
+        $this->create_award('Master Warrior', 0, 1, 10);
+        $this->create_award('Master Wizard', 0, 1, 10);
 
-		$this->create_award('Lord', 0, 1, 30);
-		$this->create_award('Lady', 0, 1, 30);
-		$this->create_award('Baronet', 0, 1, 40);
-		$this->create_award('Baronetess', 0, 1, 40);
-		$this->create_award('Baron', 0, 1, 50);
-		$this->create_award('Baroness', 0, 1, 50);
-		$this->create_award('Viscount', 0, 1, 60);
-		$this->create_award('Viscountess', 0, 1, 60);
-		$this->create_award('Count', 0, 1, 70);
-		$this->create_award('Countess', 0, 1, 70);
-		$this->create_award('Marquis', 0, 1, 80);
-		$this->create_award('Marquess', 0, 1, 80);
-		$this->create_award('Duke', 0, 1, 90);
-		$this->create_award('Duchess', 0, 1, 90);
-		$this->create_award('Archduke', 0, 1, 100);
-		$this->create_award('Archduchess', 0, 1, 100);
-		$this->create_award('Grand Duke', 0, 1, 110);
-		$this->create_award('Grand Duchess', 0, 1, 110);
+        $this->create_award('Lord', 0, 1, 30);
+        $this->create_award('Lady', 0, 1, 30);
+        $this->create_award('Baronet', 0, 1, 40);
+        $this->create_award('Baronetess', 0, 1, 40);
+        $this->create_award('Baron', 0, 1, 50);
+        $this->create_award('Baroness', 0, 1, 50);
+        $this->create_award('Viscount', 0, 1, 60);
+        $this->create_award('Viscountess', 0, 1, 60);
+        $this->create_award('Count', 0, 1, 70);
+        $this->create_award('Countess', 0, 1, 70);
+        $this->create_award('Marquis', 0, 1, 80);
+        $this->create_award('Marquess', 0, 1, 80);
+        $this->create_award('Duke', 0, 1, 90);
+        $this->create_award('Duchess', 0, 1, 90);
+        $this->create_award('Archduke', 0, 1, 100);
+        $this->create_award('Archduchess', 0, 1, 100);
+        $this->create_award('Grand Duke', 0, 1, 110);
+        $this->create_award('Grand Duchess', 0, 1, 110);
 
-		$this->create_award('Sheriff',  0, 0, 0);
-		$this->create_award('Provincial Baron',  0, 0, 0);
-		$this->create_award('Provincial Baroness',  0, 0, 0);
-		$this->create_award('Provincial Duke',  0, 0, 0);
-		$this->create_award('Provincial Duchess',  0, 0, 0);
-		$this->create_award('Provincial Grand Duke',  0, 0, 0);
-		$this->create_award('Provincial Grand Duchess',  0, 0, 0);
+        $this->create_award('Sheriff', 0, 0, 0);
+        $this->create_award('Provincial Baron', 0, 0, 0);
+        $this->create_award('Provincial Baroness', 0, 0, 0);
+        $this->create_award('Provincial Duke', 0, 0, 0);
+        $this->create_award('Provincial Duchess', 0, 0, 0);
+        $this->create_award('Provincial Grand Duke', 0, 0, 0);
+        $this->create_award('Provincial Grand Duchess', 0, 0, 0);
 
-		$this->create_award('Shire Regent',  0, 0, 0);
-		$this->create_award('Baronial Regent',  0, 0, 0);
-		$this->create_award('Ducal Regent',  0, 0, 0);
-		$this->create_award('Grand Ducal Regent',  0, 0, 0);
+        $this->create_award('Shire Regent', 0, 0, 0);
+        $this->create_award('Baronial Regent', 0, 0, 0);
+        $this->create_award('Ducal Regent', 0, 0, 0);
+        $this->create_award('Grand Ducal Regent', 0, 0, 0);
 
-		$this->create_award('Shire Clerk',  0, 0, 0);
-		$this->create_award('Baronial Seneschal',  0, 0, 0);
-		$this->create_award('Ducal Chancellor',  0, 0, 0);
-		$this->create_award('Grand Ducal General Minister',  0, 0, 0);
+        $this->create_award('Shire Clerk', 0, 0, 0);
+        $this->create_award('Baronial Seneschal', 0, 0, 0);
+        $this->create_award('Ducal Chancellor', 0, 0, 0);
+        $this->create_award('Grand Ducal General Minister', 0, 0, 0);
 
-		$this->create_award('Provincial Champion',  0, 0, 0);
-		$this->create_award('Baronial Champion',  0, 0, 0);
-		$this->create_award('Ducal Defender',  0, 0, 0);
-		$this->create_award('Grand Ducal Defender',  0, 0, 0);
+        $this->create_award('Provincial Champion', 0, 0, 0);
+        $this->create_award('Baronial Champion', 0, 0, 0);
+        $this->create_award('Ducal Defender', 0, 0, 0);
+        $this->create_award('Grand Ducal Defender', 0, 0, 0);
 
-		$this->create_award('Kingdom Champion',  0, 0, 0);
-		$this->create_award('Kingdom Regent',  0, 0, 0);
-		$this->create_award('Kingdom Prime Minister',  0, 0, 0);
-		$this->create_award('Kingdom Monarch',  0, 0, 0);
+        $this->create_award('Kingdom Champion', 0, 0, 0);
+        $this->create_award('Kingdom Regent', 0, 0, 0);
+        $this->create_award('Kingdom Prime Minister', 0, 0, 0);
+        $this->create_award('Kingdom Monarch', 0, 0, 0);
 
-		$this->create_award('Director of the Board',  0, 0, 0);
+        $this->create_award('Director of the Board', 0, 0, 0);
 
-		$this->create_award('Custom Award',  0, 0, 0);
-	}
+        $this->create_award('Custom Award', 0, 0, 0);
+    }
 
-	public function create_award($name, $is_ladder, $is_title, $title_class, $peerage = 'None', $officer_role = 'none') {
-		$this->award->clear();
-		$this->award->name = $name;
-		$this->award->is_ladder = $is_ladder;
-		$this->award->is_title = $is_title;
-		$this->award->title_class = $title_class;
-		$this->award->peerage = $peerage;
-		$this->award->officer_role = $officer_role;
-		$this->award->save();
-	}
+    public function create_award($name, $is_ladder, $is_title, $title_class, $peerage = 'None', $officer_role = 'none')
+    {
+        $this->award->clear();
+        $this->award->name = $name;
+        $this->award->is_ladder = $is_ladder;
+        $this->award->is_title = $is_title;
+        $this->award->title_class = $title_class;
+        $this->award->peerage = $peerage;
+        $this->award->officer_role = $officer_role;
+        $this->award->save();
+    }
+
+    /**
+     * Structured award dropdown groups for UI rendering (T-AWD-01).
+     *
+     * @return array<string, mixed>
+     */
+    public function GetAwardOptionGroups($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+        $officerRole = $request['OfficerRole'] ?? null;
+
+        if ($kingdomId > 0) {
+            $kingdom = new Kingdom();
+            $awards = $kingdom->GetAwardList([
+                'IsLadder' => null,
+                'IsTitle' => null,
+                'KingdomId' => $kingdomId,
+                'OfficerRole' => $officerRole,
+            ]);
+        } else {
+            $awards = $this->GetAwardList([
+                'IsLadder' => null,
+                'IsTitle' => null,
+                'OfficerRole' => $officerRole,
+            ]);
+        }
+
+        if (($awards['Status']['Status'] ?? 1) != 0) {
+            return ['Status' => $awards['Status'], 'Groups' => [], 'StandaloneOptions' => []];
+        }
+
+        $items = $awards['Awards'] ?? [];
+        usort($items, static function (array $a, array $b): int {
+            return strcmp($a['KingdomAwardName'] ?? '', $b['KingdomAwardName'] ?? '');
+        });
+
+        $pseudoLadderIds = self::pseudoLadderKingdomAwardIds();
+        $custom = $ladder = $knighthoods = $masterhoods = $paragons = $associates = $nobles = $other = [];
+
+        foreach ($items as $award) {
+            $sysName = $award['AwardName'] ?? $award['KingdomAwardName'];
+            $isPseudoLadder = in_array((int) ($award['KingdomAwardId'] ?? 0), $pseudoLadderIds, true);
+            if ($isPseudoLadder) {
+                $ladder[] = $award;
+            } elseif ($sysName === 'Custom Award' || $sysName === 'Custom Title') {
+                $custom[] = $award;
+            } elseif (!empty($award['IsLadder'])) {
+                $ladder[] = $award;
+            } elseif (in_array($sysName, ['Defender', 'Master'], true)) {
+                $nobles[] = $award;
+            } elseif ($sysName === 'Weaponmaster') {
+                $other[] = $award;
+            } elseif (($award['Peerage'] ?? '') === 'Knight') {
+                $knighthoods[] = $award;
+            } elseif (($award['Peerage'] ?? '') === 'Paragon') {
+                $paragons[] = $award;
+            } elseif (($award['Peerage'] ?? '') === 'Master'
+                || (!empty($award['IsTitle']) && ($award['TitleClass'] ?? 0) == 10)) {
+                $masterhoods[] = $award;
+            } elseif (in_array($award['Peerage'] ?? '', ['Squire', 'Man-At-Arms', 'Page', 'Lords-Page'], true)
+                || $sysName === 'Apprentice') {
+                $associates[] = $award;
+            } elseif ((!empty($award['IsTitle']) && ($award['TitleClass'] ?? 0) >= 30)
+                || $sysName === 'Esquire') {
+                $nobles[] = $award;
+            } else {
+                $other[] = $award;
+            }
+        }
+
+        $groups = [];
+        if ($ladder !== []) {
+            $groups[] = ['Label' => 'Ladder Awards', 'Items' => $ladder];
+        }
+        foreach ([
+            'Knighthoods' => $knighthoods,
+            'Masterhoods' => $masterhoods,
+            'Paragons' => $paragons,
+            'Noble Titles' => $nobles,
+            'Associate Titles' => $associates,
+            'Other' => $other,
+        ] as $label => $groupItems) {
+            if ($groupItems !== []) {
+                $groups[] = ['Label' => $label, 'Items' => $groupItems];
+            }
+        }
+
+        return [
+            'Status' => Success(),
+            'Groups' => $groups,
+            'StandaloneOptions' => $custom,
+            'PseudoLadderIds' => $pseudoLadderIds,
+        ];
+    }
+
+    public function GetAwardOptionListHtml(int $kingdomId = 0, $officerRole = null)
+    {
+        $cacheKey = Ork3::$Lib->ghettocache->key([
+            'KingdomId' => (int) $kingdomId,
+            'OfficerRole' => $officerRole,
+        ]);
+        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.GetAwardOptionListHtml', $cacheKey, 1200)) !== false) {
+            return $cached;
+        }
+
+        $grouped = $this->GetAwardOptionGroups([
+            'KingdomId' => (int) $kingdomId,
+            'OfficerRole' => $officerRole,
+        ]);
+        if (($grouped['Status']['Status'] ?? 1) != 0) {
+            return false;
+        }
+
+        $pseudoLadderIds = $grouped['PseudoLadderIds'] ?? self::pseudoLadderKingdomAwardIds();
+        $options = '';
+
+        foreach ($grouped['Groups'] ?? [] as $group) {
+            $label = $group['Label'] ?? '';
+            $items = $group['Items'] ?? [];
+            if ($items === []) {
+                continue;
+            }
+            $options .= "<optgroup label='" . htmlspecialchars($label, ENT_QUOTES) . "'>";
+            foreach ($items as $award) {
+                $extra = '';
+                if ($label === 'Ladder Awards') {
+                    $isPseudo = in_array((int) ($award['KingdomAwardId'] ?? 0), $pseudoLadderIds, true);
+                    $awardId = $isPseudo ? 0 : ($award['AwardId'] ?? 0);
+                    $extra = " data-is-ladder='1' data-award-id='" . htmlspecialchars($awardId, ENT_QUOTES) . "'";
+                } elseif ($label === 'Masterhoods') {
+                    $extra = " data-award-id='" . htmlspecialchars((int) ($award['AwardId'] ?? 0), ENT_QUOTES) . "' data-peerage='Master'";
+                }
+                $options .= "<option value='" . htmlspecialchars($award['KingdomAwardId'], ENT_QUOTES) . "'{$extra}>" . htmlspecialchars($award['KingdomAwardName'], ENT_QUOTES) . "</option>";
+            }
+            $options .= "</optgroup>";
+        }
+
+        foreach ($grouped['StandaloneOptions'] ?? [] as $award) {
+            $sysName = $award['AwardName'] ?? $award['KingdomAwardName'];
+            $kaName = $award['KingdomAwardName'] ?? $sysName;
+            $dataAttrs = '';
+            if ($sysName === 'Custom Title' && $kaName === 'Custom Title') {
+                $dataAttrs = " data-custom-title='1' data-award-id='" . htmlspecialchars($award['AwardId'], ENT_QUOTES) . "'";
+            } elseif ($sysName === 'Custom Award' && $kaName === 'Custom Award') {
+                $dataAttrs = " data-custom-award='1' data-award-id='" . htmlspecialchars($award['AwardId'], ENT_QUOTES) . "'";
+            }
+            $options .= "<option value='" . htmlspecialchars($award['KingdomAwardId'], ENT_QUOTES) . "'" . $dataAttrs . ">" . htmlspecialchars($kaName, ENT_QUOTES) . "</option>";
+        }
+
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.GetAwardOptionListHtml', $cacheKey, $options);
+    }
+
+    /**
+     * Kingdom-original awards that behave as ladders but have no backing
+     * ork_award row, so a.is_ladder can never be 1 for them. Membership here
+     * is the ONLY thing that makes the rank picker appear for such an award.
+     *
+     * This list is hardcoded kingdomaward_ids and therefore goes stale every
+     * time a kingdom invents (or re-creates) a ladder award -- it is why
+     * Painted Skies' Hunter (7513) silently lost its ranks. The replacement,
+     * reading ork_kingdomaward.is_ladder instead, is written but unmerged on
+     * Tobias/feature/kingdom-ladder-awards (be5c0314); note its migration
+     * re-adds the is_ladder column, which has existed since 2014, so it needs
+     * fixing before it runs. Until that lands, new ladder awards must be added
+     * here by hand.
+     *
+     * @return list<int>
+     */
+    public static function pseudoLadderKingdomAwardIds(): array
+    {
+        return [
+            7067, 7249, 6628, 5813, 6045, 6050, 6430, 6283, 7055,
+            6403, 6297, 7273, 7070, 6311, 6310, 7277, 6411, 6771,
+            6577, 94, 7084, 6171, 6574, 7254,
+            7513, // Hunter (The Painted Skies) -- added 2026-10-04
+            7531, // Order of the Marksman (13 Roads) -- added 2026-11-05
+        ];
+    }
+
+    /**
+     * THE answer to "is this kingdomaward a ladder?", for PHP callers.
+     *
+     * Three cases, any one of which is sufficient:
+     *   1. the kingdom's own row says so (ork_kingdomaward.is_ladder)
+     *   2. the base catalog row says so (ork_award.is_ladder)
+     *   3. it is a kingdom-original ladder, which has no catalog row at all and
+     *      so can only be recognised by pseudoLadderKingdomAwardIds()
+     *
+     * GREATEST/"either side says so", not COALESCE: both is_ladder columns are
+     * `NOT NULL DEFAULT 0`, so COALESCE never falls through to the catalog.
+     *
+     * Callers previously each guessed instead, and the most common guess was
+     * `Rank > 0` -- "it has a rank, so it must be a ladder". That is circular:
+     * a ladder recommendation saved before its award was recognised has no rank,
+     * so it reads as non-ladder, so the UI hides the rank picker, so the rank can
+     * never be added. Use this, never the rank.
+     */
+    public static function effectiveIsLadder($kingdomaward_id, $kaIsLadder = 0, $awardIsLadder = 0): bool
+    {
+        if ((int) $kaIsLadder === 1 || (int) $awardIsLadder === 1) {
+            return true;
+        }
+        return in_array((int) $kingdomaward_id, self::pseudoLadderKingdomAwardIds(), true);
+    }
+
+    /**
+     * Kingdom-original ladders grouped by the SAME slug rule the State of Amtgard
+     * grid uses: the name with a leading "Order of the" stripped. Returns
+     * kingdomaward_id => ['Slug', 'Name', 'Kingdom'].
+     *
+     * Why this exists: held ranks are keyed "k<kingdomaward_id>" for these awards
+     * (Player::GetAwardMaxRanks), so a principality's own row of a ladder is a
+     * different bucket from its parent kingdom's row -- Painted Skies' "Hunter" and
+     * Northern Lights' "Order of the Hunter" do not see each other. The grid
+     * deliberately merges them ("a principality that splits off keeps running the
+     * parent's ladder"), so the two disagree.
+     *
+     * This is NOT used to merge the buckets. Measured on production: only 2 of the
+     * 5 multi-kingdom slug groups are parent/child, and only 9 players are affected,
+     * so merging would change suggested ranks far more widely than the problem
+     * warrants. It is used to TELL the officer what the recipient holds elsewhere
+     * and let them decide. The one place they ARE merged is a recommendation's
+     * "already has" test -- see pseudoLadderEquivalenceGroups().
+     *
+     * @return array<int, array{Slug: string, Name: string, Kingdom: string}>
+     */
+    public function pseudoLadderSiblings(): array
+    {
+        $ids = array_map('intval', self::pseudoLadderKingdomAwardIds());
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT ka.kingdomaward_id, ka.name, k.name AS kingdom_name
+               FROM ' . DB_PREFIX . 'kingdomaward ka
+               LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = ka.kingdom_id
+              WHERE ka.kingdomaward_id IN (' . implode(',', $ids) . ')'
+        );
+        if (!$rs) {
+            return [];
+        }
+        while ($rs->Next()) {
+            $name = (string) $rs->name;
+            // Same expression as Report::StateOfAmtgard's pseudoGroups.
+            $out[(int) $rs->kingdomaward_id] = [
+                'Slug'    => strtolower(trim(preg_replace('/^Order of (?:the )?/i', '', $name))),
+                'Name'    => $name,
+                'Kingdom' => (string) ($rs->kingdom_name ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Kingdom-original ladders that are one award under another kingdom's name.
+     * The Amtgard Rules do not stratify the archery ladder yet, so kingdoms run it
+     * as Hunter, Marksman, Sharpshooter or Archer. Keyed by pseudoLadderSiblings slug.
+     */
+    private const PSEUDO_LADDER_SLUG_ALIASES = [
+        'marksman'     => 'hunter',
+        'sharpshooter' => 'hunter',
+        'archer'       => 'hunter',
+    ];
+
+    /**
+     * Kingdom-original Masters (kingdomaward_id => ladder slug) that cover every
+     * kingdom's row of their ladder, as GetLadderMasterMap's peerages cover theirs.
+     */
+    private const PSEUDO_LADDER_MASTERS = [
+        7250 => 'hunter', // Master Hunter (Crystal Groves)
+    ];
+
+    private static $sharedAwardIds = null;
+
+    /**
+     * Kingdom-original ladders that are the same award across kingdoms: the same
+     * slug (Desert Winds' and Crimson Sands' Roach), or slugs aliased together
+     * (every kingdom's archery ladder). Holding any member at rank N is holding
+     * the award at rank N, and holding the group's Master covers it.
+     *
+     * Their award_id is 0 or Custom Award, shared with unrelated awards, so the
+     * kingdomaward_ids are the only thing that can tie them together. Groups of one
+     * kingdomaward with no Master are left out: a caller's own kingdomaward_id
+     * match already covers those.
+     *
+     * @return list<array{KaIds: list<int>, MasterKaIds: list<int>}>
+     */
+    public function pseudoLadderEquivalenceGroups(): array
+    {
+        $bySlug = [];
+        foreach ($this->pseudoLadderSiblings() as $kaId => $sibling) {
+            $slug = self::PSEUDO_LADDER_SLUG_ALIASES[$sibling['Slug']] ?? $sibling['Slug'];
+            $bySlug[$slug]['KaIds'][] = (int) $kaId;
+        }
+        foreach (self::PSEUDO_LADDER_MASTERS as $kaId => $slug) {
+            if (isset($bySlug[$slug])) {
+                $bySlug[$slug]['MasterKaIds'][] = (int) $kaId;
+            }
+        }
+        $groups = [];
+        foreach ($bySlug as $group) {
+            $group += ['MasterKaIds' => []];
+            if (count($group['KaIds']) > 1 || $group['MasterKaIds']) {
+                $groups[] = $group;
+            }
+        }
+        return $groups;
+    }
+
+    /**
+     * SQL predicate: held award row `$held` is the recommendation's kingdom-original
+     * ladder (kingdomaward alias `$ka`) under any kingdom's name, at rank
+     * `$minRank` or above, or that ladder's Master. With $minRank null it matches
+     * ladder rows at any rank and leaves Masters out, for highest-rank lookups.
+     * '0' when there are no groups.
+     */
+    public function sqlPseudoLadderEquivalentHeld(string $held, string $ka, ?string $minRank = null): string
+    {
+        $parts = [];
+        foreach ($this->pseudoLadderEquivalenceGroups() as $group) {
+            $members = implode(',', $group['KaIds']);
+            $match = $held . '.kingdomaward_id IN (' . $members . ')'
+                . ($minRank !== null ? ' AND ' . $held . '.rank >= ' . $minRank : '');
+            if ($minRank !== null && $group['MasterKaIds']) {
+                $match = '(' . $match . ') OR ' . $held . '.kingdomaward_id IN (' . implode(',', $group['MasterKaIds']) . ')';
+            }
+            $parts[] = '(' . $ka . '.kingdomaward_id IN (' . $members . ') AND (' . $match . '))';
+        }
+        return $parts ? '(' . implode(' OR ', $parts) . ')' : '0';
+    }
+
+    /**
+     * award_ids that many unrelated kingdom awards share: 0 (a kingdom-original
+     * award with no catalog row), Custom Award and Custom Title. Two award rows
+     * agreeing on one of these are not thereby the same award, so an award_id
+     * match must skip them.
+     *
+     * @return list<int>
+     */
+    public function sharedAwardIds(): array
+    {
+        if (self::$sharedAwardIds !== null) {
+            return self::$sharedAwardIds;
+        }
+        $ids = [0];
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            "SELECT award_id FROM " . DB_PREFIX . "award WHERE name IN ('Custom Award', 'Custom Title')"
+        );
+        if ($rs) {
+            while ($rs->Next()) {
+                $ids[] = (int) $rs->award_id;
+            }
+        }
+        return self::$sharedAwardIds = $ids;
+    }
+
+    /**
+     * The same three cases as a SQL fragment, for queries that must filter or
+     * select on it. Expects the kingdomaward and award table aliases.
+     */
+    public static function sqlEffectiveIsLadder(string $ka = 'ka', string $a = 'a'): string
+    {
+        $ids = array_map('intval', self::pseudoLadderKingdomAwardIds());
+        $pseudo = $ids
+            ? ', CASE WHEN ' . $ka . '.kingdomaward_id IN (' . implode(',', $ids) . ') THEN 1 ELSE 0 END'
+            : '';
+        return 'GREATEST(COALESCE(' . $ka . '.is_ladder, 0), COALESCE(' . $a . '.is_ladder, 0)' . $pseudo . ')';
+    }
 }
-
-?>

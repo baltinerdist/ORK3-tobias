@@ -8,14 +8,14 @@
 <style>
 .rp-root { --rp-accent-dark: #1a3d2b; --rp-accent: #276749; --rp-accent-mid: #38a169; }
 
-.ap-card { background:#fff; border:1px solid var(--rp-border); border-radius:8px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
-.ap-card-header { border-radius:8px 8px 0 0; background:var(--rp-bg-light); border-bottom:1px solid var(--rp-border); padding:9px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--rp-text-muted); display:flex; align-items:center; gap:7px; }
+.ap-card { background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:8px; margin-bottom:20px; box-shadow:var(--ork-shadow-card); }
+.ap-card-header { border-radius:8px 8px 0 0; background:var(--rp-bg-light); border-bottom:1px solid var(--rp-divider); padding:9px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--rp-text-muted); display:flex; align-items:center; gap:7px; }
 .ap-card-body { padding:16px 18px; }
 .ap-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
 .ap-field { display:flex; flex-direction:column; gap:5px; flex:1; min-width:180px; }
 .ap-field label { font-size:11px; font-weight:700; color:var(--rp-text-muted); text-transform:uppercase; letter-spacing:.05em; }
-.ap-field input { height:34px; border:1px solid #cbd5e0; border-radius:5px; padding:0 10px; font-size:13px; color:var(--rp-text); background:#fff; width:100%; box-sizing:border-box; font-family:inherit; }
-.ap-field input:focus { outline:none; border-color:var(--rp-accent-mid); box-shadow:0 0 0 2px rgba(56,161,105,.15); }
+.ap-field input { height:34px; border:1px solid var(--ork-input-border); border-radius:5px; padding:0 10px; font-size:13px; color:var(--rp-text); background:var(--ork-input-bg); width:100%; box-sizing:border-box; font-family:inherit; }
+.ap-field input:focus { outline:none; border-color:var(--rp-accent-mid); box-shadow:0 0 0 2px rgba(56,161,105,.15); background:var(--ork-card-bg); }
 .ap-btn { height:34px; padding:0 18px; border-radius:5px; font-size:13px; font-weight:600; cursor:pointer; border:none; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; background:var(--rp-accent); color:#fff; font-family:inherit; }
 .ap-btn:hover { background:var(--rp-accent-dark); }
 .ap-btn:disabled { opacity:.5; cursor:not-allowed; }
@@ -28,9 +28,25 @@
 
 .ap-explainer { background:#f0faf4; border:1px solid #c6e8d4; border-radius:8px; padding:14px 16px; margin-bottom:14px; font-size:13px; color:var(--rp-text-body); }
 .ap-explainer-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#276749; margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+/* Guide pointer inside the notice: a button in the box's own green, with a
+   three-beat ring pulse on load so the eye lands on it, then still. */
+.ap-guide-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin-top:12px; }
+.ap-guide-link { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:8px; background:#276749; color:#fff; font-size:13px; font-weight:600; text-decoration:none; box-shadow:0 0 0 0 rgba(39,103,73,0.45); animation:ap-guide-pulse 1.6s ease-out 0.6s 3; }
+.ap-guide-link strong { font-weight:800; color:#fff; }
+.ap-guide-link:hover { background:#22543d; color:#fff; text-decoration:none; animation:none; }
+.ap-guide-link:focus-visible { outline:2px solid #276749; outline-offset:2px; }
+.ap-guide-note { font-size:13px; color:var(--rp-text-body); }
+/* !important answers orkui.css's global dark link tint, as .pn-crumb does (project pattern). */
+html[data-theme="dark"] .ap-guide-link { background:#38a169; color:#0b1f14 !important; box-shadow:0 0 0 0 rgba(154,230,180,0.5); }
+html[data-theme="dark"] .ap-guide-link strong { color:#0b1f14; }
+html[data-theme="dark"] .ap-guide-link:hover { background:#48bb78; color:#0b1f14 !important; }
+html[data-theme="dark"] .ap-guide-note { color:var(--ork-text-secondary); }
+@keyframes ap-guide-pulse { 0% { box-shadow:0 0 0 0 rgba(39,103,73,0.45); } 70% { box-shadow:0 0 0 12px rgba(39,103,73,0); } 100% { box-shadow:0 0 0 0 rgba(39,103,73,0); } }
+@media (prefers-reduced-motion: reduce) { .ap-guide-link { animation:none; } }
+@media (max-width:600px) { .ap-guide-link { width:100%; justify-content:center; min-height:44px; } }
 
 .ap-table { width:100%; border-collapse:collapse; font-size:13px; }
-.ap-table th { background:var(--rp-bg-light); border-bottom:2px solid var(--rp-border); padding:8px 10px; text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--rp-text-muted); white-space:nowrap; }
+.ap-table th { background:var(--rp-bg-light); border-bottom:2px solid var(--rp-divider); padding:8px 10px; text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--rp-text-muted); white-space:nowrap; }
 .ap-table th:last-child { text-align:right; }
 .ap-table td { padding:10px 10px; border-bottom:1px solid #f0f4f8; vertical-align:middle; color:var(--rp-text); }
 .ap-table tr:last-child td { border-bottom:none; }
@@ -47,18 +63,18 @@
 .ap-empty i { font-size:20px; display:block; margin-bottom:8px; opacity:.4; }
 
 #ap-admin-table th.tablesorter-header:not(.sorter-false) { cursor:pointer; user-select:none; }
-#ap-admin-table th.tablesorter-header:not(.sorter-false) .tablesorter-header-inner::after { font-family:'Font Awesome 5 Free'; font-weight:900; content:'\f0dc'; margin-left:5px; opacity:.35; font-size:10px; }
+#ap-admin-table th.tablesorter-header:not(.sorter-false) .tablesorter-header-inner::after { font-family:'Font Awesome 7 Free'; font-weight:900; content:'\f0dc'; margin-left:5px; opacity:.35; font-size:10px; }
 #ap-admin-table th.tablesorter-headerAsc .tablesorter-header-inner::after  { content:'\f0de' !important; opacity:1; color:var(--rp-accent); }
 #ap-admin-table th.tablesorter-headerDesc .tablesorter-header-inner::after { content:'\f0dd' !important; opacity:1; color:var(--rp-accent); }
 
-.kn-ac-results { position:absolute; top:100%; left:0; right:0; z-index:9999; margin-top:2px; border:1px solid #e2e8f0; border-radius:6px; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.12); max-height:220px; overflow-y:auto; display:none; }
+.kn-ac-results { position:absolute; top:100%; left:0; right:0; z-index:9999; margin-top:2px; border:1px solid var(--ork-input-border); border-radius:6px; background:var(--ork-card-bg); box-shadow:var(--ork-shadow-dropdown); max-height:220px; overflow-y:auto; display:none; }
 .kn-ac-results.kn-ac-open { display:block; }
 .kn-ac-item { padding:8px 12px; font-size:13px; cursor:pointer; color:#2d3748; border-bottom:1px solid #f7fafc; }
 .kn-ac-item:last-child { border-bottom:none; }
 .kn-ac-item:hover, .kn-ac-item.kn-ac-focused { background:#ebf4ff; color:#2c7a7b; }
 
 .gp-kd-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; margin-top:4px; }
-.gp-kd-tile { background:#fff; border:1px solid var(--rp-border); border-radius:7px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; font-size:13px; text-decoration:none; color:var(--rp-text); transition:box-shadow .12s, border-color .12s; }
+.gp-kd-tile { background:var(--ork-card-bg); border:1px solid var(--ork-border); border-radius:7px; padding:10px 14px; display:flex; align-items:center; justify-content:space-between; font-size:13px; text-decoration:none; color:var(--rp-text); transition:box-shadow .12s, border-color .12s; }
 .gp-kd-tile:hover { border-color:var(--rp-accent-mid); box-shadow:0 2px 8px rgba(56,161,105,.12); color:var(--rp-accent-dark); }
 .gp-kd-tile i { opacity:.4; font-size:12px; }
 
@@ -104,6 +120,9 @@ html[data-theme="dark"] .gp-kd-tile:hover { border-color:#48bb78; box-shadow:0 2
 			</div>
 		</div>
 		<div class="rp-header-actions">
+			<a class="rp-btn-ghost" href="<?= UIR ?>Admin/guide#granting-and-reviewing-access" data-tip="The Administrator Guide: when to grant global admin, and the twice-yearly review">
+				<i class="fas fa-book-open"></i> Granting guide
+			</a>
 			<a class="rp-btn-ghost" href="<?= UIR ?>Admin">
 				<i class="fas fa-arrow-left"></i> Back to Admin
 			</a>
@@ -120,6 +139,12 @@ html[data-theme="dark"] .gp-kd-tile:hover { border-color:#48bb78; box-shadow:0 2
 			<div class="ap-explainer">
 				<div class="ap-explainer-title"><i class="fas fa-exclamation-triangle"></i> Use sparingly</div>
 				System Administrator access satisfies <strong>all</strong> authorization checks across every kingdom, park, and event — regardless of scope. Prefer granting Kingdom-level <em>Create</em> access to local admins instead.
+				<div class="ap-guide-row">
+					<a class="ap-guide-link" href="<?= UIR ?>Admin/guide#granting-and-reviewing-access">
+						<i class="fas fa-book-open" aria-hidden="true"></i> Before granting: read <strong>Granting and reviewing access</strong>
+					</a>
+					<span class="ap-guide-note">and run the request by the other admins in #ork-administrative-chat.</span>
+				</div>
 			</div>
 			<div class="ap-row">
 				<div class="ap-field" style="flex:2">
@@ -152,7 +177,7 @@ html[data-theme="dark"] .gp-kd-tile:hover { border-color:#48bb78; box-shadow:0 2
 				<tr>
 					<th>Person</th>
 					<th data-sorter="false">Role</th>
-					<th>Last Login</th>
+					<th title="Last activity on the ORK (any signed-in page or app request), to the day">Last Seen</th>
 					<th>Last Credit</th>
 					<th>Last Modified</th>
 					<th data-sorter="false"></th>
@@ -202,7 +227,7 @@ html[data-theme="dark"] .gp-kd-tile:hover { border-color:#48bb78; box-shadow:0 2
 		<i class="fas fa-chess-rook"></i>
 		Kingdom Permissions
 	</div>
-	<p style="font-size:13px;color:var(--rp-text-muted);margin:0 0 12px">Manage roles &amp; grants for each kingdom and its parks.</p>
+	<p style="font-size:13px;color:var(--ork-text-on-ground);margin:0 0 12px">Manage roles &amp; grants for each kingdom and its parks.</p>
 
 	<div class="gp-kd-grid">
 		<?php foreach ($kingdoms as $k): ?>
@@ -297,7 +322,7 @@ html[data-theme="dark"] .gp-kd-tile:hover { border-color:#48bb78; box-shadow:0 2
 				if ($empty.length) {
 					$empty.replaceWith(
 						'<table class="ap-table" id="ap-admin-table">'
-						+ '<thead><tr><th>Person</th><th>Role</th><th>Last Login</th><th>Last Credit</th><th>Last Modified</th><th></th></tr></thead>'
+						+ '<thead><tr><th>Person</th><th>Role</th><th title="Last activity on the ORK (any signed-in page or app request), to the day">Last Seen</th><th>Last Credit</th><th>Last Modified</th><th></th></tr></thead>'
 						+ '<tbody id="ap-admin-tbody"></tbody></table>'
 					);
 				}

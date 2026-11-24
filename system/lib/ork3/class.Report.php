@@ -10,98 +10,225 @@ I have no apologies for the following code.  It works well enough.
 
 *************************************************************************/
 
-class Report  extends Ork3 {
+class Report extends Ork3
+{
+    /**
+     * Schema version folded into every recommendation cache key. Bump it whenever the
+     * selected predicate or the row shape changes, so entries written under the old
+     * rule are not served for the rest of their TTL. Player::bust_player_award_recs_cache
+     * reads this constant, so the bust keys can never drift out of step with the reads.
+     * v4: the row shape gained monarchy_only, and the badge count became public-only.
+     * v5: "already has" stopped matching on shared award_ids and learned
+     *     cross-kingdom ladder equivalents (Award::pseudoLadderEquivalenceGroups).
+     */
+    public const REC_CACHE_VERSION = 5;
 
-	public function __construct() {
-		parent::__construct();
-	}
+    /**
+     * Ladder-terminal masterhoods that ork_award.peerage still records as 'None'.
+     *
+     * Every Order ladder ends in a masterhood, and most are classified correctly
+     * (Rose, Smith, Lion, Owl, Dragon, Garber, Warlord, Master Crown, Battlemaster
+     * all carry peerage='Master'). These five do not, so filtering on peerage alone
+     * silently drops them from the weekly recap:
+     *
+     *     7 Master Jovius   8 Master Zodiac   9 Master Mask
+     *    10 Master Hydra   11 Master Griffin
+     *
+     * Reported 2026-08-08 ("Week in review missing non-ladder masterhoods").
+     *
+     * This is a recap-scoped compensation, NOT a fix for the underlying data:
+     * ork_award.peerage is deliberately left alone, so the Masters report, the
+     * Knights & Masters report and the State of Amtgard totals still omit these.
+     * Reclassifying the awards would make all of those consistent in one move.
+     */
+    private const RECAP_UNFLAGGED_MASTERHOOD_AWARD_IDS = array(7, 8, 9, 10, 11);
 
-	public function HeraldryReport($request) {
-		// WithMissingHeraldries [No, Yes, Only]
-		$response = array();
+    public function __construct()
+    {
+        parent::__construct();
+    }
 
-		// Unified handling for all heraldry types
-		$table = strtolower($request['Type']);
-		$$table = new yapo($this->db, DB_PREFIX . $table);
-		
-		if ($request['WithMissingHeraldries'] == 'No')
-			$$table->has_heraldry = 1;
-		if ($request['WithMissingHeraldries'] == 'Only')
-			$$table->has_heraldry = 0;
-		if (valid_id($request['KingdomId'])) {
-			$$table->kingdom_id = $request['KingdomId'];
-		}
-		if (valid_id($request['ParkId'])) {
-			$$table->park_id = $request['ParkId'];
-		}
-		
-		if ($$table->find()) {
-			$table_id = $table.'_id';
-			do {
-				if ($request['Type'] == 'Mundane' && $$table->suspended == 1) {
-					continue;
-				}
-				if ($request['Type'] == 'Park' && $$table->active == 'Retired') {
-					continue;
-				}
-				$last_signin = null;
-				
-				// Calculate LastSignin for Mundane types
-				if ($request['Type'] == 'Mundane') {
-					$sql = "SELECT MAX(att.date) as last_signin FROM " . DB_PREFIX . "attendance att WHERE att.mundane_id = '" . mysql_real_escape_string($$table->mundane_id) . "'";
-					$r = $this->db->query($sql);
-					if ($r && $r->size() > 0) {
-						$r->next();
-						$last_signin = $r->last_signin;
-					}
-				}
-				
-				$response[] = array(
-					'HasHeraldry' => $$table->has_heraldry,
-					'HeraldryUrl' => Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => ($request['Type'] == 'Mundane' ? 'Player' : $request['Type']), 'Id' => $$table->$table_id)),
-					'Name' => ($request['Type'] == 'Mundane') ? $$table->persona : $$table->name,
-					'Url' => UIR . ($request['Type'] == 'Mundane' ? 'Player' : $request['Type']) . '/index/' . $$table->$table_id,
-					'LastSignin' => $last_signin
-				);
-			} while ($$table->next());
-		}
-		
-		return $response;
-	}
+    /**
+     * Token + global AUTH_ADMIN (same gate as Administration::PurgeLogs).
+     *
+     * @return array|null error response, or null when authorized
+     */
+    private function _authorizeGlobalAdmin($token): ?array
+    {
+        $actorId = Ork3::$Lib->authorization->IsAuthorized($token ?? '');
+        if (!valid_id($actorId)) {
+            return BadToken();
+        }
+        if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_CREATE)) {
+            return null;
+        }
 
-	public function TournamentReport($request) {
+        return NoAuthorization();
+    }
 
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false)
-			return $cache;
+    /**
+     * Token + park CREATE, kingdom EDIT, or global admin (Controller_Reports scope gates).
+     *
+     * @return array|null error response, or null when authorized
+     */
+    private function _authorizeKingdomParkReportScope($token, string $scopeType, int $scopeId): ?array
+    {
+        if (!valid_id($scopeId)) {
+            return InvalidParameter('Scope id is required.');
+        }
+        $actorId = Ork3::$Lib->authorization->IsAuthorized($token ?? '');
+        if (!valid_id($actorId)) {
+            return BadToken();
+        }
+        if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_ADMIN)
+            || Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_CREATE)) {
+            return null;
+        }
+        if ($scopeType === 'Park' || $scopeType === AUTH_PARK) {
+            if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_PARK, $scopeId, AUTH_CREATE)) {
+                return null;
+            }
+        } elseif ($scopeType === 'Kingdom' || $scopeType === AUTH_KINGDOM) {
+            if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_KINGDOM, $scopeId, AUTH_EDIT)) {
+                return null;
+            }
+        }
 
-		if (valid_id($request['KingdomId'])) $where .= " and t.kingdom_id = $request[KingdomId] or e.kingdom_id = $request[KingdomId]";
-		if (valid_id($request['ParkId'])) $where .= " and t.park_id = $request[ParkId] or e.park_id = $request[ParkId]";
-		if (valid_id($request['EventId'])) $where .= " and e.event_id = $request[EventId]";
-		if (valid_id($request['EventCalendarDetailId'])) $where .= " and d.event_calendardetail_id = $request[EventCalendarDetailId]";
+        return NoAuthorization();
+    }
 
-		if (valid_id($request['ParticipantMundaneId'])) {
-			$where .= " and pm.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'";
-		}
-		if (valid_id($request['ParticipantUnitId'])) {
-			$where .= " and p.unit_id = '" . mysql_real_escape_string($request['UnitId']) . "'";
-		}
-		if (valid_id($request['ParticipantParkId'])) {
-			$where .= " and p.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		}
-		if (valid_id($request['ParticipantKingdomId'])) {
-			$where .= " and p.kingdom_id = '" . mysql_real_escape_string($request['KingdomId']) . "'";
-		}
-		if (valid_id($request['ParticipantTeamId'])) {
-			$where .= " and p.team_id = '" . mysql_real_escape_string($request['TeamId']) . "'";
-		}
-		if (valid_id($request['ParticipantAlias'])) {
-			$where .= " and p.alias like '" . mysql_real_escape_string($request['Alias']) . "'";
-		}
+    /**
+     * Token + self or park CREATE / kingdom EDIT / admin (SetPlayerActiveStatus-style).
+     *
+     * @return array|null error response, or null when authorized
+     */
+    private function _authorizeReportPlayerScope(array $request, int $mundaneId): ?array
+    {
+        if (!valid_id($mundaneId)) {
+            return InvalidParameter('MundaneId is required.');
+        }
+        $actorId = Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? '');
+        if (!valid_id($actorId)) {
+            return BadToken();
+        }
+        if ((int) $actorId === (int) $mundaneId) {
+            return null;
+        }
+        $mundane = new yapo($this->db, DB_PREFIX . 'mundane');
+        $mundane->mundane_id = $mundaneId;
+        if (!$mundane->find()) {
+            return InvalidParameter('Player not found.');
+        }
+        if (Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_PARK, (int) $mundane->park_id, AUTH_CREATE)
+            || Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_KINGDOM, (int) $mundane->kingdom_id, AUTH_EDIT)
+            || Ork3::$Lib->authorization->HasAuthority($actorId, AUTH_ADMIN, 0, AUTH_EDIT)) {
+            return null;
+        }
 
-		if (valid_id($request['Limit'])) $limit = " limit " . mysql_real_escape_string($request['Limit']);
+        return NoAuthorization();
+    }
 
-		$sql = "select t.*, k.name as kingdom_name, k.parent_kingdom_id, park.name as park_name, e.name as event_name, d.event_start
+    public function HeraldryReport($request)
+    {
+        // WithMissingHeraldries [No, Yes, Only]
+        $response = array();
+
+        // Unified handling for all heraldry types
+        $table = strtolower($request['Type']);
+        $$table = new yapo($this->db, DB_PREFIX . $table);
+
+        if ($request['WithMissingHeraldries'] == 'No') {
+            $$table->has_heraldry = 1;
+        }
+        if ($request['WithMissingHeraldries'] == 'Only') {
+            $$table->has_heraldry = 0;
+        }
+        if (valid_id($request['KingdomId'])) {
+            $$table->kingdom_id = $request['KingdomId'];
+        }
+        if (valid_id($request['ParkId'])) {
+            $$table->park_id = $request['ParkId'];
+        }
+
+        if ($$table->find()) {
+            $table_id = $table.'_id';
+            do {
+                if ($request['Type'] == 'Mundane' && $$table->suspended == 1) {
+                    continue;
+                }
+                if ($request['Type'] == 'Park' && $$table->active == 'Retired') {
+                    continue;
+                }
+                $last_signin = null;
+
+                // Calculate LastSignin for Mundane types
+                if ($request['Type'] == 'Mundane') {
+                    $sql = "SELECT MAX(att.date) as last_signin FROM " . DB_PREFIX . "attendance att WHERE att.mundane_id = '" . mysql_real_escape_string($$table->mundane_id) . "'";
+                    $r = $this->db->query($sql);
+                    if ($r && $r->size() > 0) {
+                        $r->next();
+                        $last_signin = $r->last_signin;
+                    }
+                }
+
+                $response[] = array(
+                    'HasHeraldry' => $$table->has_heraldry,
+                    'HeraldryUrl' => Ork3::$Lib->heraldry->GetHeraldryUrl(array('Type' => ($request['Type'] == 'Mundane' ? 'Player' : $request['Type']), 'Id' => $$table->$table_id)),
+                    'Name' => ($request['Type'] == 'Mundane') ? $$table->persona : $$table->name,
+                    'Url' => UIR . ($request['Type'] == 'Mundane' ? 'Player' : $request['Type']) . '/index/' . $$table->$table_id,
+                    'LastSignin' => $last_signin
+                );
+            } while ($$table->next());
+        }
+
+        return $response;
+    }
+
+    public function TournamentReport($request)
+    {
+
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) {
+            return $cache;
+        }
+
+        if (valid_id($request['KingdomId'])) {
+            $where .= " and t.kingdom_id = $request[KingdomId] or e.kingdom_id = $request[KingdomId]";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where .= " and t.park_id = $request[ParkId] or e.park_id = $request[ParkId]";
+        }
+        if (valid_id($request['EventId'])) {
+            $where .= " and e.event_id = $request[EventId]";
+        }
+        if (valid_id($request['EventCalendarDetailId'])) {
+            $where .= " and d.event_calendardetail_id = $request[EventCalendarDetailId]";
+        }
+
+        if (valid_id($request['ParticipantMundaneId'])) {
+            $where .= " and pm.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'";
+        }
+        if (valid_id($request['ParticipantUnitId'])) {
+            $where .= " and p.unit_id = '" . mysql_real_escape_string($request['UnitId']) . "'";
+        }
+        if (valid_id($request['ParticipantParkId'])) {
+            $where .= " and p.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        }
+        if (valid_id($request['ParticipantKingdomId'])) {
+            $where .= " and p.kingdom_id = '" . mysql_real_escape_string($request['KingdomId']) . "'";
+        }
+        if (valid_id($request['ParticipantTeamId'])) {
+            $where .= " and p.team_id = '" . mysql_real_escape_string($request['TeamId']) . "'";
+        }
+        if (valid_id($request['ParticipantAlias'])) {
+            $where .= " and p.alias like '" . mysql_real_escape_string($request['Alias']) . "'";
+        }
+
+        if (valid_id($request['Limit'])) {
+            $limit = " limit " . mysql_real_escape_string($request['Limit']);
+        }
+
+        $sql = "select t.*, k.name as kingdom_name, k.parent_kingdom_id, park.name as park_name, e.name as event_name, d.event_start
 					from " . DB_PREFIX . "tournament t
 						left join " . DB_PREFIX . "event_calendardetail d on d.event_calendardetail_id = t.event_calendardetail_id
 							left join " . DB_PREFIX . "event e on d.event_id = e.event_id
@@ -115,56 +242,58 @@ class Report  extends Ork3 {
 					order by t.date_time
 					$limit";
 
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false) {
-			$response['Tournaments'] = array();
-			if ($r->size() > 0) {
-				while($r->next()) {
-					$response['Tournaments'][] = array(
-							'TournamentId' => $r->tournament_id,
-							'KingdomId' => $r->kingdom_id,
-							'KingdomName' => $r->kingdom_name,
-							'ParentKingdomId' => $r->parent_kingdom_id,
-							'ParkId' => $r->park_id,
-							'ParkName' => $r->park_name,
-							'EventCalendarDetailId' => $r->event_calendardetail_id,
-							'EventName' => $r->event_name,
-							'Name' => $r->name,
-							'Description' => $r->description,
-							'Url' => $r->url,
-							'DateTime' => $r->date_time
-						);
-				}
-			}
-			$response['Status'] = Success();
-		} else {
-      logtrace("Tournaments", $sql);
-			$response['Status'] = InvalidParameter();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false) {
+            $response['Tournaments'] = array();
+            if ($r->size() > 0) {
+                while ($r->next()) {
+                    $response['Tournaments'][] = array(
+                            'TournamentId' => $r->tournament_id,
+                            'KingdomId' => $r->kingdom_id,
+                            'KingdomName' => $r->kingdom_name,
+                            'ParentKingdomId' => $r->parent_kingdom_id,
+                            'ParkId' => $r->park_id,
+                            'ParkName' => $r->park_name,
+                            'EventCalendarDetailId' => $r->event_calendardetail_id,
+                            'EventName' => $r->event_name,
+                            'Name' => $r->name,
+                            'Description' => $r->description,
+                            'Url' => $r->url,
+                            'DateTime' => $r->date_time
+                        );
+                }
+            }
+            $response['Status'] = Success();
+        } else {
+            logtrace("Tournaments", $sql);
+            $response['Status'] = InvalidParameter();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function ClassMasters($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)
-			return $cache;
+    public function ClassMasters($request)
+    {
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false) {
+            return $cache;
+        }
 
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$location_clause = " and m.kingdom_id IN ($kidList)";
-		} else {
-			// Kingdom-wide view: sort kingdom, then park, then persona.
-			$order = "k.name, p.name, m.persona, ";
-		}
+        if (valid_id($request['KingdomId'])) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $location_clause = " and m.kingdom_id IN ($kidList)";
+        } else {
+            // Kingdom-wide view: sort kingdom, then park, then persona.
+            $order = "k.name, p.name, m.persona, ";
+        }
 
-		if (valid_id($request['ParkId'])) {
-			$location_clause = " and m.park_id = $request[ParkId]";
-		}
-                $masters_clause = "or a.award_id IN (select aw.award_id from " . DB_PREFIX . "award aw where aw.peerage = 'Paragon')";
-		$attendance = "(SELECT max(att.date) FROM " . DB_PREFIX . "attendance att WHERE att.mundane_id = m.mundane_id) as last_attended";
+        if (valid_id($request['ParkId'])) {
+            $location_clause = " and m.park_id = $request[ParkId]";
+        }
+        $masters_clause = "or a.award_id IN (select aw.award_id from " . DB_PREFIX . "award aw where aw.peerage = 'Paragon')";
+        $attendance = "(SELECT max(att.date) FROM " . DB_PREFIX . "attendance att WHERE att.mundane_id = m.mundane_id) as last_attended";
 
-		$sql = "select distinct p.park_id, p.name as park_name, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, a.peerage, ifnull(ka.name, a.name) as award_name, m.persona, ma.date, m.mundane_id, ma.rank, $attendance
+        $sql = "select distinct p.park_id, p.name as park_name, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, a.peerage, ifnull(ka.name, a.name) as award_name, m.persona, ma.date, m.mundane_id, ma.rank, m.suspended, $attendance
 					from " . DB_PREFIX . "awards ma
 						left join " . DB_PREFIX . "kingdomaward ka on ka.kingdomaward_id = ma.kingdomaward_id
 							left join " . DB_PREFIX . "award a on a.award_id = ka.award_id
@@ -174,43 +303,47 @@ class Report  extends Ork3 {
 					where (0 $masters_clause) and m.active = 1 $location_clause
 					order by $order a.peerage, a.name, m.persona
 			";
-      logtrace("ClassMasters", $sql);
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Awards'] = array();
-			while ($r->next()) {
-				$response['Awards'][] = array(
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'Date' => $r->date,
-						'ParkId' => $r->park_id,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'ParkName' => $r->park_name,
-						'KingdomName' => $r->kingdom_name,
-						'Rank' => $r->rank,
-						'AwardName' => $r->award_name,
-						'LastAttended' => $r->last_attended
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace("ClassMasters", $sql);
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Awards'] = array();
+            while ($r->next()) {
+                $response['Awards'][] = array(
+                        'MundaneId' => $r->mundane_id,
+                        'Persona' => $r->persona,
+                        'Date' => $r->date,
+                        'ParkId' => $r->park_id,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomName' => $r->kingdom_name,
+                        'Rank' => $r->rank,
+                        'AwardName' => $r->award_name,
+                        'LastAttended' => $r->last_attended,
+                        'Suspended' => (int)$r->suspended
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-  public function CrownQualed($kingdom_id) {
-		$key = Ork3::$Lib->ghettocache->key(array('KingdomId' => $kingdom_id));
-    if (!valid_id($kingdom_id))
-      return false;
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)
-			return $cache;
+    public function CrownQualed($kingdom_id)
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('KingdomId' => $kingdom_id));
+        if (!valid_id($kingdom_id)) {
+            return false;
+        }
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false) {
+            return $cache;
+        }
 
-    $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id)));
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id)));
 
-    $sql = "select m.mundane_id, m.persona, ducal_terms.ducal_points, kingdom_terms.kingdom_points from
+        $sql = "select m.mundane_id, m.persona, ducal_terms.ducal_points, kingdom_terms.kingdom_points from
               ork_mundane m
               left join 
                 (select mundane_id, sum(tour_points) as ducal_points from
@@ -245,72 +378,83 @@ class Report  extends Ork3 {
               where m.kingdom_id IN ($kidList) and (ducal_terms.mundane_id is not null or kingdom_terms.mundane_id is not null)
                 and (kingdom_points >= 4 or (kingdom_points + ducal_points) >= 6 or ducal_points >= 6)
                 order by m.mundane_id";
-    logtrace("CrownQualedPlayerAwards", $sql);
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Awards'] = array();
-			while ($r->next()) {
-				$name = array();
-				if ($r->kingdom_points > 0)
-				$name[] = $r->kingdom_points . ' Kingdom Points';
-				if ($r->ducal_points > 0 || $r->kingdom_points)
-				$name[] = ($r->ducal_points + $r->kingdom_points) . ' Ducal Points';
-				$response['Awards'][] = array(
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'KingdomId' => $kingdom_id,
-						'DucalPoints' => $r->ducal_points,
-						'KingdomPoints' => $r->kingdom_points,
-						'AwardName' => implode(', ', $name)
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-  }
-  
-	public function PlayerAwards($request) {
+        logtrace("CrownQualedPlayerAwards", $sql);
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Awards'] = array();
+            while ($r->next()) {
+                $name = array();
+                if ($r->kingdom_points > 0) {
+                    $name[] = $r->kingdom_points . ' Kingdom Points';
+                }
+                if ($r->ducal_points > 0 || $r->kingdom_points) {
+                    $name[] = ($r->ducal_points + $r->kingdom_points) . ' Ducal Points';
+                }
+                $response['Awards'][] = array(
+                        'MundaneId' => $r->mundane_id,
+                        'Persona' => $r->persona,
+                        'KingdomId' => $kingdom_id,
+                        'DucalPoints' => $r->ducal_points,
+                        'KingdomPoints' => $r->kingdom_points,
+                        'AwardName' => implode(', ', $name)
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)
-			return $cache;
+    public function PlayerAwards($request)
+    {
 
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$location_clause = " and m.kingdom_id IN ($kidList)";
-		} else {
-			$order = "k.name, ";
-		}
-		if (valid_id($request['ParkId'])) {
-			$location_clause = " and m.park_id = $request[ParkId]";
-		}
-		// Custom Titles aliased to a peerage award (e.g. Knight of the Sword) need
-		// to surface in these reports as if they were the alias target. Use
-		// COALESCE(alias.col, a.col) anywhere we read peerage / is_ladder / is_title.
-		if (valid_id($request['IncludeKnights'])) {
-			$knights_clause = "or COALESCE(alias.peerage, a.peerage) = 'Knight'";
-		}
-		if (valid_id($request['IncludeMasters'])) {
-			$masters_clause = "or COALESCE(alias.peerage, a.peerage) = 'Master'";
-		}
-		if (valid_id($request['IncludeLadder']) && is_numeric($request['LadderMinimum'])) {
-			$ladder_clause = " or (COALESCE(alias.is_ladder, a.is_ladder) = 1 and ma.rank >= $request[LadderMinimum])";
-		}
-		if (valid_id($request['IncludeTitles'])) {
-			$title_clause =  "or COALESCE(alias.is_title, a.is_title) = 1";
-		}
-		if (is_array($request['Awards'])) {
-			$awards_clause = 'and in (' . implode(',',$request['Awards']) . ')';
-		}
-		$sql = "select
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false) {
+            return $cache;
+        }
+
+        if (valid_id($request['KingdomId'])) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $location_clause = " and m.kingdom_id IN ($kidList)";
+        } else {
+            $order = "k.name, ";
+        }
+        if (valid_id($request['ParkId'])) {
+            $location_clause = " and m.park_id = $request[ParkId]";
+        }
+        // Custom Titles aliased to a peerage award (e.g. Knight of the Sword) need
+        // to surface in these reports as if they were the alias target. Use
+        // COALESCE(alias.col, a.col) anywhere we read peerage / is_ladder / is_title.
+        if (valid_id($request['IncludeKnights'])) {
+            $knights_clause = "or COALESCE(alias.peerage, a.peerage) = 'Knight'";
+        }
+        if (valid_id($request['IncludeMasters'])) {
+            $masters_clause = "or COALESCE(alias.peerage, a.peerage) = 'Master'";
+        }
+        if (valid_id($request['IncludeLadder']) && is_numeric($request['LadderMinimum'])) {
+            // Ladder = the alias says so, else the kingdom row, the catalog row, or
+            // the curated kingdom-original list (Award::sqlEffectiveIsLadder). The
+            // catalog flag alone misses every kingdom-original ladder -- Order of the
+            // Sharpshooter, Hunter, Raider and friends sit on award 94 "Custom Award"
+            // (is_ladder 0) or no catalog row at all -- so their grants never reached
+            // this report while the ladder grid and recommendations already listed
+            // them. Reported 2026-10-22 (Lichwood Grove: two Sharpshooters missing).
+            $ladder_clause = " or (COALESCE(alias.is_ladder, " . Award::sqlEffectiveIsLadder('ka', 'a') . ") = 1 and ma.rank >= $request[LadderMinimum])";
+        }
+        if (valid_id($request['IncludeTitles'])) {
+            $title_clause =  "or COALESCE(alias.is_title, a.is_title) = 1";
+        }
+        if (is_array($request['Awards'])) {
+            $awards_clause = 'and in (' . implode(',', $request['Awards']) . ')';
+        }
+        $sql = "select
               distinct p.park_id, p.name as park_name,
               k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id,
               COALESCE(alias.peerage, a.peerage) as peerage,
               COALESCE(NULLIF(ma.custom_name, ''), ka.name, alias.name, a.name) as award_name,
-              m.persona, ma.date, m.mundane_id, ma.rank,
+              m.persona, ma.date, m.mundane_id, ma.rank, m.suspended,
               bwm.mundane_id as by_whom_id, bwm.persona as by_whom_persona,
               ma.awards_id
 					from " . DB_PREFIX . "awards ma
@@ -326,55 +470,58 @@ class Report  extends Ork3 {
 			";
 
         logtrace("PlayerAwards", $sql);
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Awards'] = array();
-			while ($r->next()) {
-				$response['Awards'][] = array(
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'Date' => $r->date,
-						'ParkId' => $r->park_id,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingdom_id,
-						'ParkName' => $r->park_name,
-						'KingdomName' => $r->kingdom_name,
-						'Rank' => $r->rank,
-						'AwardName' => $r->award_name,
-						'Peerage' => $r->peerage,
-						'EnteredBy' => $r->by_whom_persona,
-						'EnteredById' => $r->by_whom_id
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Awards'] = array();
+            while ($r->next()) {
+                $response['Awards'][] = array(
+                        'MundaneId' => $r->mundane_id,
+                        'Persona' => $r->persona,
+                        'Date' => $r->date,
+                        'ParkId' => $r->park_id,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingdom_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomName' => $r->kingdom_name,
+                        'Rank' => $r->rank,
+                        'AwardName' => $r->award_name,
+                        'Peerage' => $r->peerage,
+                        'EnteredBy' => $r->by_whom_persona,
+                        'EnteredById' => $r->by_whom_id,
+                        'Suspended' => (int)$r->suspended
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function CustomAwards($request) {
+    public function CustomAwards($request)
+    {
 
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false)
-			return $cache;
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 60)) !== false) {
+            return $cache;
+        }
 
-		$location_clause = '';
-		$order = '';
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$location_clause = " and m.kingdom_id IN (" . $kidList . ")";
-		} else {
-			$order = "k.name, ";
-		}
-		if (valid_id($request['ParkId'])) {
-			$location_clause = " and m.park_id = " . intval($request['ParkId']);
-		}
+        $location_clause = '';
+        $order = '';
+        if (valid_id($request['KingdomId'])) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $location_clause = " and m.kingdom_id IN (" . $kidList . ")";
+        } else {
+            $order = "k.name, ";
+        }
+        if (valid_id($request['ParkId'])) {
+            $location_clause = " and m.park_id = " . intval($request['ParkId']);
+        }
 
-		$past_year = date("Y-m-d", strtotime("-1 year"));
+        $past_year = date("Y-m-d", strtotime("-1 year"));
 
-		$sql = "select
+        $sql = "select
 				distinct p.park_id, p.name as park_name,
 				k.kingdom_id, k.name as kingdom_name,
 				m.persona, m.mundane_id,
@@ -401,63 +548,235 @@ class Report  extends Ork3 {
 			order by $order p.name, m.persona, ma.date
 		";
 
-		logtrace("CustomAwards", $sql);
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Awards'] = array();
-			while ($r->next()) {
-				$response['Awards'][] = array(
-					'MundaneId' => $r->mundane_id,
-					'Persona' => $r->persona,
-					'CustomAwardName' => $r->custom_name,
-					'Date' => $r->date,
-					'GivenById' => $r->given_by_id,
-					'GivenBy' => $r->given_by_persona,
-					'Note' => $r->note,
-					'ParkId' => $r->park_id,
-					'KingdomId' => $r->kingdom_id,
-					'ParkName' => $r->park_name,
-					'KingdomName' => $r->kingdom_name
-				);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace("CustomAwards", $sql);
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Awards'] = array();
+            while ($r->next()) {
+                $response['Awards'][] = array(
+                    'MundaneId' => $r->mundane_id,
+                    'Persona' => $r->persona,
+                    'CustomAwardName' => $r->custom_name,
+                    'Date' => $r->date,
+                    'GivenById' => $r->given_by_id,
+                    'GivenBy' => $r->given_by_persona,
+                    'Note' => $r->note,
+                    'ParkId' => $r->park_id,
+                    'KingdomId' => $r->kingdom_id,
+                    'ParkName' => $r->park_name,
+                    'KingdomName' => $r->kingdom_name
+                );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function PlayerAwardRecommendations($request) {
+    /**
+     * Collapse parallel recommendations into one row per (recipient, kingdomaward, rank)
+     * cluster. Pure transform of the row array returned by PlayerAwardRecommendations.
+     * Returns array_values of the grouped rows (same shape the Manager template expects).
+     */
+    public function groupRecommendations($recs)
+    {
+        // Dismissal is a CLUSTER-level property, not a member-level one. Several
+        // people can recommend the same honor, and each of those recommendations can
+        // be dismissed independently — but the honor is still live while any one of
+        // them stands. So: a cluster counts as dismissed only when EVERY member is,
+        // and the dismissed members of a still-live cluster are dropped rather than
+        // folded in, leaving live rows (and their support counts) exactly as they
+        // look without the flag. Without IncludeDismissed no dismissed rows reach
+        // here at all, so this is inert on the default path.
+        $liveByKey = [];
+        foreach ((array)$recs as $rec) {
+            if (empty($rec['IsDismissed'])) {
+                $liveByKey[(int)($rec['MundaneId'] ?? 0) . ':'
+                    . (int)($rec['KingdomAwardId'] ?? 0) . ':'
+                    . (int)($rec['Rank'] ?? 0)] = true;
+            }
+        }
 
-		// Cache keyed to the player being viewed — shared across all viewers.
-		// Viewer-specific flags (ViewerCanSecond, ViewerCanEditReason, IsMine) are
-		// computed after the cache hit so one bust clears the data for everyone.
-		$viewer_id = (int)($request['RequestedBy'] ?? 0);
-		$key = Ork3::$Lib->ghettocache->key([
-			'KingdomId' => (int)($request['KingdomId'] ?? 0),
-			'ParkId'    => (int)($request['ParkId']    ?? 0),
-			'PlayerId'  => (int)($request['PlayerId']  ?? 0),
-		]);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false)
-			return $this->applyViewerFlags($cache, $viewer_id);
+        $groups = [];
+        foreach ((array)$recs as $rec) {
+            $mid  = (int)($rec['MundaneId'] ?? 0);
+            $kaid = (int)($rec['KingdomAwardId'] ?? 0);
+            $rank = (int)($rec['Rank'] ?? 0);
+            $key  = $mid . ':' . $kaid . ':' . $rank;
+            if (!empty($rec['IsDismissed']) && isset($liveByKey[$key])) {
+                continue;
+            }
+            if (!isset($groups[$key])) {
+                $groups[$key] = [
+                    'MundaneId'      => $mid,
+                    'KingdomAwardId' => $kaid,
+                    'Rank'           => $rank,
+                    // Carried from PlayerAwardRecommendations, which resolves it via
+                    // Award::effectiveIsLadder. The row templates used to recompute it
+                    // as `Rank > 0`, which is circular for a rank-less ladder rec.
+                    'IsLadder'       => !empty($rec['IsLadder']),
+                    'Persona'        => $rec['Persona'] ?? '',
+                    'AwardName'      => $rec['AwardName'] ?? '',
+                    'ParkId'         => (int)($rec['ParkId'] ?? 0),
+                    // Retirement is a property of the RECIPIENT and the cluster key
+                    // already includes MundaneId, so every member shares it — no
+                    // aggregation needed, just carry it through to the template layer.
+                    'IsRetired'      => !empty($rec['IsRetired']),
+                    'AlreadyHas'     => !empty($rec['AlreadyHas']),
+                    // Why AlreadyHas is set, not just that it is. A Master peerage that
+                    // supersedes the order is not the same thing as having been granted
+                    // it, and a reviewer triaging a long queue treats the two
+                    // differently. The Court Planner's picker already draws the
+                    // distinction; without carrying the flag this far the Recommendations
+                    // Manager could only ever say "already has" for both.
+                    'CoveredByMaster' => !empty($rec['CoveredByMaster']),
+                    'CurrentRank'    => isset($rec['CurrentRank']) ? (int)$rec['CurrentRank'] : null,
+                    'HeldRank'       => (int)($rec['HeldRank'] ?? 0),
+                    'Members'        => [],
+                    'MemberRecIds'   => [],
+                    'OldestAgeDays'  => 0,
+                    'OldestDate'     => $rec['DateRecommended'] ?? '',
+                    'RepRecId'       => (int)($rec['RecommendationsId'] ?? 0),
+                    'IsDismissed'        => false,
+                    'DismissedAt'        => null,
+                    'DismissedByPersona' => '',
+                    '_advocates'     => [],
+                    '_hasNamedRec'   => false,
+                    '_allSnoozed'    => true,
+                    '_allPassed'     => true,
+                    '_moMax'         => 0,
+                    '_moAll'         => true,
+                ];
+            }
+            $g = &$groups[$key];
+            $g['Members'][]      = $rec;
+            $g['MemberRecIds'][] = (int)($rec['RecommendationsId'] ?? 0);
+            $age = (int)($rec['AgeDays'] ?? 0);
+            if ($age >= $g['OldestAgeDays']) {
+                $g['OldestAgeDays'] = $age;
+                $g['OldestDate']    = $rec['DateRecommended'] ?? '';
+                $g['RepRecId']      = (int)($rec['RecommendationsId'] ?? 0);
+            }
+            if (!empty($rec['IsDismissed'])
+                && ($g['DismissedAt'] === null || (string)($rec['DismissedAt'] ?? '') > (string)$g['DismissedAt'])
+            ) {
+                $g['DismissedAt']        = $rec['DismissedAt'] ?? null;
+                $g['DismissedByPersona'] = $rec['DismissedByPersona'] ?? '';
+            }
+            if (!empty($rec['RecommendedById'])) {
+                $g['_advocates'][(int)$rec['RecommendedById']] = true;
+                $g['_hasNamedRec'] = true;
+            }
+            foreach (($rec['Seconds'] ?? []) as $s) {
+                if (!empty($s['SupporterMundaneId'])) {
+                    $g['_advocates'][(int)$s['SupporterMundaneId']] = true;
+                }
+            }
+            if (empty($rec['IsSnoozed'])) {
+                $g['_allSnoozed'] = false;
+            }
+            if (empty($rec['PassedToLocal'])) {
+                $g['_allPassed'] = false;
+            }
+            $moLevel = (int)($rec['MonarchyOnlyLevel'] ?? 0);
+            if ($moLevel > $g['_moMax']) {
+                $g['_moMax'] = $moLevel;
+            }
+            if ($moLevel === 0) {
+                $g['_moAll'] = false;
+            }
+            unset($g);
+        }
+        foreach ($groups as $k => $g) {
+            unset($g['_advocates'][$g['MundaneId']]);
+            $groups[$k]['SupportCount']  = max(0, count($g['_advocates']) - ($g['_hasNamedRec'] ? 1 : 0));
+            $groups[$k]['IsDismissed']   = !isset($liveByKey[$k]);
+            $groups[$k]['IsSnoozed']     = $g['_allSnoozed'];
+            $groups[$k]['PassedToLocal'] = $g['_allPassed'];
+            $groups[$k]['MonarchyOnlyLevel'] = $g['_moMax'];
+            $groups[$k]['MonarchyOnlyAll']   = $g['_moMax'] > 0 && $g['_moAll'];
+            unset(
+                $groups[$k]['_advocates'],
+                $groups[$k]['_hasNamedRec'],
+                $groups[$k]['_allSnoozed'],
+                $groups[$k]['_allPassed'],
+                $groups[$k]['_moMax'],
+                $groups[$k]['_moAll']
+            );
+        }
+        return array_values($groups);
+    }
 
-		if (valid_id($request['KingdomId'])) {
-			// Roll up principalities when the kingdom's IncludePrincipalityInStatistics
-			// flag is on. Originally pulled back because the inlined rendering was
-			// blocking DOMContentLoaded, but the tab is now lazy-loaded so the row
-			// count no longer affects initial paint.
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$location_clause = " AND m.kingdom_id IN ($kidList)";
-		}
-		if (valid_id($request['ParkId'])) {
-			$location_clause = " AND m.park_id = $request[ParkId]";
-		}
-		if (valid_id($request['PlayerId'])) {
-			$location_clause = " AND recs.mundane_id = $request[PlayerId]";
-		}
+    public function PlayerAwardRecommendations($request)
+    {
 
-		$sql = "select
+        // Cache keyed to the player being viewed — shared across all viewers.
+        // Viewer-specific flags (ViewerCanSecond, ViewerCanEditReason, IsMine) are
+        // computed after the cache hit so one bust clears the data for everyone.
+        $viewer_id = (int)($request['RequestedBy'] ?? 0);
+        // Monarchy Only visibility keys on the TOKEN, never RequestedBy: JSON callers
+        // choose RequestedBy freely. The cached response keeps every row (it is
+        // viewer-agnostic); hidden rows are dropped per request below.
+        $hideViewer = Ork3::$Lib->recommendationvisibility->viewerFromToken($request['Token'] ?? '');
+        $recIdList = isset($request['RecommendationsIdIn']) ? (array)$request['RecommendationsIdIn'] : null;
+        $skipCache = !empty($request['SkipCache']) || $recIdList !== null;
+        // Opt-in: fold soft-deleted (dismissed) recommendations back in. Off by
+        // default, so every existing caller keeps the live-only view.
+        $includeDismissed = !empty($request['IncludeDismissed']);
+        $dismissedClause  = $includeDismissed
+            ? '1 = 1'
+            : '(recs.deleted_by IS NULL OR recs.deleted_by = 0)';
+        $key = Ork3::$Lib->ghettocache->key([
+            'KingdomId'        => (int)($request['KingdomId'] ?? 0),
+            'ParkId'           => (int)($request['ParkId']    ?? 0),
+            'PlayerId'         => (int)($request['PlayerId']  ?? 0),
+            // Two different row sets must never share a cache entry.
+            'IncludeDismissed' => $includeDismissed ? 1 : 0,
+            // Bumped when the selected predicate changes, so entries cached under the
+            // previous rule are not served for the rest of their TTL. Kept in step with
+            // PlayerAwardRecommendationsCount's key or the badge and the list disagree
+            // for a whole TTL after deploy.
+            'V'                => self::REC_CACHE_VERSION,
+        ]);
+        if (!$skipCache && ($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
+            // Filter BEFORE applyViewerFlags: masking nulls RecommendedById, which the
+            // author rule in RecommendationVisibility reads.
+            return $this->applyViewerFlags(Ork3::$Lib->recommendationvisibility->filterRecommendations($cache, $hideViewer), $viewer_id);
+        }
+
+        if (valid_id($request['KingdomId'])) {
+            // Roll up principalities when the kingdom's IncludePrincipalityInStatistics
+            // flag is on. Originally pulled back because the inlined rendering was
+            // blocking DOMContentLoaded, but the tab is now lazy-loaded so the row
+            // count no longer affects initial paint.
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $location_clause = " AND m.kingdom_id IN ($kidList)";
+        }
+        if (valid_id($request['ParkId'])) {
+            $location_clause = " AND m.park_id = $request[ParkId]";
+        }
+        if (valid_id($request['PlayerId'])) {
+            $location_clause = " AND recs.mundane_id = $request[PlayerId]";
+        }
+
+        $idClause = '';
+        if ($recIdList !== null) {
+            $ids = array_filter(array_map('intval', $recIdList));
+            $idClause = empty($ids) ? ' AND 1=0 ' : ' AND recs.recommendations_id IN (' . implode(',', $ids) . ') ';
+        }
+
+        // award_id ties a rec to a held award only when it names one specific award:
+        // 0, Custom Award and Custom Title are shared by many unrelated kingdom awards,
+        // and matching on them read one kingdom's custom title as "already has" another.
+        // Kingdom-original ladders on those ids are tied by their equivalence group
+        // instead (one award under several kingdoms' names).
+        $sharedAwardIds = implode(',', Ork3::$Lib->award->sharedAwardIds());
+        $eqHeldAtRank = Ork3::$Lib->award->sqlPseudoLadderEquivalentHeld('subeq', 'ka', 'COALESCE(recs.rank, 0)');
+        $eqHeldAny = Ork3::$Lib->award->sqlPseudoLadderEquivalentHeld('subeq2', 'ka');
+
+        $sql = "select
 			a.peerage, ifnull(ka.name, a.name) as award_name,
 			a.is_ladder as a_is_ladder,
 			a.is_title  as a_is_title,
@@ -466,6 +785,7 @@ class Report  extends Ork3 {
 			m.mundane_id,
 			m.park_id,
 			m.kingdom_id,
+			m.active as m_active,
 			p.name as park_name,
 			k.name as kingdom_name,
 			recs.rank,
@@ -476,278 +796,787 @@ class Report  extends Ork3 {
 			recs.mask_giver,
 			recs.deleted_at,
 			recs.deleted_by,
+			dbm.persona as deleted_by_persona,
+			recs.snoozed_monarch_id,
+			recs.snoozed_regent_id,
+			recs.passed_to_local,
+			recs.passed_to_local_by,
+			recs.passed_to_local_at,
+			recs.monarchy_only,
+			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id) AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id) AND o.role = 'Monarch' ORDER BY o.officer_id DESC LIMIT 1), 0) AS current_monarch_id,
+			COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id) AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id) AND o.role = 'Regent'  ORDER BY o.officer_id DESC LIMIT 1), 0) AS current_regent_id,
+			(SELECT COUNT(*) FROM " . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.status != 'cancelled') AS on_court_count,
 			ka.award_id as ka_award_id,
+			ka.is_title as ka_is_title,
+			ka.is_ladder as ka_is_ladder,
 			ka.kingdomaward_id as ka_kaward_id,
 			(SELECT COUNT(suboa.awards_id) FROM " . DB_PREFIX . "awards suboa WHERE suboa.mundane_id = recs.mundane_id AND suboa.kingdomaward_id = ka.kingdomaward_id AND suboa.rank >= COALESCE(recs.rank, 0)) as kacount,
-			(SELECT COUNT(suboa2.awards_id) FROM " . DB_PREFIX . "awards suboa2 WHERE suboa2.mundane_id = recs.mundane_id AND suboa2.award_id = recs.award_id AND suboa2.rank >= COALESCE(recs.rank, 0)) as awcount,
+			(SELECT COUNT(suboa2.awards_id) FROM " . DB_PREFIX . "awards suboa2 WHERE suboa2.mundane_id = recs.mundane_id AND suboa2.award_id = recs.award_id AND recs.award_id NOT IN ($sharedAwardIds) AND suboa2.rank >= COALESCE(recs.rank, 0)) as awcount,
+			(SELECT COUNT(subeq.awards_id) FROM " . DB_PREFIX . "awards subeq WHERE subeq.mundane_id = recs.mundane_id AND $eqHeldAtRank) as eqcount,
 			COALESCE(
+				(SELECT MAX(subeq2.rank) FROM " . DB_PREFIX . "awards subeq2 WHERE subeq2.mundane_id = recs.mundane_id AND $eqHeldAny),
 				(SELECT MAX(subr.rank) FROM " . DB_PREFIX . "awards subr WHERE subr.mundane_id = recs.mundane_id AND subr.kingdomaward_id = ka.kingdomaward_id),
-				(SELECT MAX(subr2.rank) FROM " . DB_PREFIX . "awards subr2 WHERE subr2.mundane_id = recs.mundane_id AND subr2.award_id = recs.award_id)
+				(SELECT MAX(subr2.rank) FROM " . DB_PREFIX . "awards subr2 WHERE subr2.mundane_id = recs.mundane_id AND subr2.award_id = recs.award_id AND recs.award_id NOT IN ($sharedAwardIds))
 			) as player_ka_rank,
 			COALESCE(
+				(SELECT subeq2.date FROM " . DB_PREFIX . "awards subeq2 WHERE subeq2.mundane_id = recs.mundane_id AND $eqHeldAny ORDER BY subeq2.rank DESC, subeq2.date DESC LIMIT 1),
 				(SELECT subr.date FROM " . DB_PREFIX . "awards subr WHERE subr.mundane_id = recs.mundane_id AND subr.kingdomaward_id = ka.kingdomaward_id ORDER BY subr.rank DESC, subr.date DESC LIMIT 1),
-				(SELECT subr2.date FROM " . DB_PREFIX . "awards subr2 WHERE subr2.mundane_id = recs.mundane_id AND subr2.award_id = recs.award_id ORDER BY subr2.rank DESC, subr2.date DESC LIMIT 1)
+				(SELECT subr2.date FROM " . DB_PREFIX . "awards subr2 WHERE subr2.mundane_id = recs.mundane_id AND subr2.award_id = recs.award_id AND recs.award_id NOT IN ($sharedAwardIds) ORDER BY subr2.rank DESC, subr2.date DESC LIMIT 1)
 			) as player_ka_date
 			FROM " . DB_PREFIX . "recommendations recs			
 			LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = recs.kingdomaward_id
 			LEFT JOIN " . DB_PREFIX . "award a on a.award_id = ka.award_id
 			LEFT join " . DB_PREFIX . "mundane m on m.mundane_id = recs.mundane_id
 			LEFT join " . DB_PREFIX . "mundane rbi on rbi.mundane_id = recs.recommended_by_id
+			LEFT join " . DB_PREFIX . "mundane dbm on dbm.mundane_id = recs.deleted_by
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
-			WHERE (recs.deleted_by IS NULL OR recs.deleted_by = 0) $location_clause
+			WHERE $dismissedClause
+			  AND (m.suspended IS NULL OR m.suspended = 0)
+			  $location_clause
+			  $idClause
 			order by m.persona, a.name, recs.rank, m.persona";
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			// First pass: collect raw rows + rec_ids/meta (for seconds wiring below)
-			// plus the set of (mundane_id, ladder_award_id) we'll need Master-peerage lookups for.
-			$rawRows = array();
-			$rec_ids = array();
-			$rec_meta_by_id = array();  // for ViewerCanSecond eligibility check
-			$ladderMap = Award::GetLadderMasterMap();
-			$masterIdSet = array();
-			foreach ($ladderMap as $lInfo) {
-				foreach ((array)$lInfo['MasterAwardIds'] as $mAid) {
-					$masterIdSet[(int)$mAid] = true;
-				}
-			}
-			$needMundaneIds = array();
-			while ($r->next()) {
-				$row = (object)[
-					'recommendations_id' => $r->recommendations_id,
-					'mundane_id'         => (int)$r->mundane_id,
-					'persona'            => $r->persona,
-					'date_recommended'   => $r->date_recommended,
-					'rank'               => $r->rank,
-					'award_name'         => $r->award_name,
-					'reason'             => $r->reason,
-					'recommended_by_persona' => $r->recommended_by_persona,
-					'recommended_by_id'      => $r->recommended_by_id,
-					'mask_giver'         => (int)$r->mask_giver,
-					'ka_kaward_id'       => (int)$r->ka_kaward_id,
-					'ka_award_id'        => (int)$r->ka_award_id,
-					'recs_award_id'      => (int)$r->award_id,
-					'park_id'            => $r->park_id,
-					'kingdom_id'         => $r->kingdom_id,
-					'park_name'          => $r->park_name,
-					'kingdom_name'       => $r->kingdom_name,
-					'kacount'            => (int)$r->kacount,
-					'awcount'            => (int)$r->awcount,
-					'player_ka_rank'     => (int)$r->player_ka_rank,
-					'player_ka_date'     => $r->player_ka_date,
-					'a_is_ladder'        => (int)$r->a_is_ladder,
-					'a_is_title'         => (int)$r->a_is_title,
-				];
-				$recAwardId = $row->ka_award_id ?: $row->recs_award_id;
-				if (isset($ladderMap[$recAwardId])) {
-					$needMundaneIds[$row->mundane_id] = true;
-				}
-				$rid = (int)$row->recommendations_id;
-				$rec_ids[] = $rid;
-				$rec_meta_by_id[$rid] = array(
-					'mundane_id' => $row->mundane_id,
-					'recommended_by_id' => (int)$row->recommended_by_id,
-					'kingdomaward_id' => $row->ka_kaward_id,
-					'rank' => (int)$row->rank,
-				);
-				$rawRows[] = $row;
-			}
+        $this->db->Clear();
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            // First pass: collect raw rows + rec_ids/meta (for seconds wiring below)
+            // plus the set of (mundane_id, ladder_award_id) we'll need Master-peerage lookups for.
+            $rawRows = array();
+            $rec_ids = array();
+            $rec_meta_by_id = array();  // for ViewerCanSecond eligibility check
+            $ladderMap = Award::GetLadderMasterMap();
+            $masterIdSet = array();
+            foreach ($ladderMap as $lInfo) {
+                foreach ((array)$lInfo['MasterAwardIds'] as $mAid) {
+                    $masterIdSet[(int)$mAid] = true;
+                }
+            }
+            $needMundaneIds = array();
+            while ($r->next()) {
+                $row = (object)[
+                    'recommendations_id' => $r->recommendations_id,
+                    'mundane_id'         => (int)$r->mundane_id,
+                    'persona'            => $r->persona,
+                    'date_recommended'   => $r->date_recommended,
+                    'rank'               => $r->rank,
+                    'award_name'         => $r->award_name,
+                    'reason'             => $r->reason,
+                    'recommended_by_persona' => $r->recommended_by_persona,
+                    'recommended_by_id'      => $r->recommended_by_id,
+                    'mask_giver'         => (int)$r->mask_giver,
+                    'ka_kaward_id'       => (int)$r->ka_kaward_id,
+                    'ka_award_id'        => (int)$r->ka_award_id,
+                    'recs_award_id'      => (int)$r->award_id,
+                    'park_id'            => $r->park_id,
+                    'kingdom_id'         => $r->kingdom_id,
+                    // Recipient is inactive (Retired). Retirement/memorial honors are
+                    // precisely the awards given to players who have stopped playing, so
+                    // these rows stay visible; the flag lets the UI badge them.
+                    'm_active'           => (int)$r->m_active,
+                    'park_name'          => $r->park_name,
+                    'kingdom_name'       => $r->kingdom_name,
+                    'kacount'            => (int)$r->kacount,
+                    'awcount'            => (int)$r->awcount,
+                    'eqcount'            => (int)$r->eqcount,
+                    'player_ka_rank'     => (int)$r->player_ka_rank,
+                    'player_ka_date'     => $r->player_ka_date,
+                    'a_is_ladder'        => (int)$r->a_is_ladder,
+                    'a_is_title'         => (int)$r->a_is_title,
+                    // Per-kingdom title flag. `tinyint(1) NOT NULL DEFAULT 0`, and the
+                    // award LEFT JOIN hangs off ka.award_id, so ka missing means a is
+                    // missing too — there is no "kingdom said nothing" state to preserve.
+                    // Combined with a_is_title by GREATEST, never COALESCE, below.
+                    'ka_is_title'        => (int)$r->ka_is_title,
+                    // Whitelist snapshot: a column selected but not copied here is
+                    // silently invisible downstream.
+                    'ka_is_ladder'       => (int)$r->ka_is_ladder,
+                    'snoozed_monarch_id' => $r->snoozed_monarch_id,
+                    'snoozed_regent_id'  => $r->snoozed_regent_id,
+                    'passed_to_local'    => (int)$r->passed_to_local,
+                    'passed_to_local_by' => $r->passed_to_local_by,
+                    'passed_to_local_at' => $r->passed_to_local_at,
+                    'monarchy_only'      => (int)$r->monarchy_only,
+                    'current_monarch_id' => (int)$r->current_monarch_id,
+                    'current_regent_id'  => (int)$r->current_regent_id,
+                    'on_court_count'     => (int)$r->on_court_count,
+                    // This snapshot is an explicit whitelist — a column added to the
+                    // SELECT but not copied here is silently invisible downstream.
+                    'deleted_by'         => $r->deleted_by,
+                    'deleted_at'         => $r->deleted_at,
+                    'deleted_by_persona' => $r->deleted_by_persona,
+                ];
+                $recAwardId = $row->ka_award_id ?: $row->recs_award_id;
+                if (isset($ladderMap[$recAwardId])) {
+                    $needMundaneIds[$row->mundane_id] = true;
+                }
+                $rid = (int)$row->recommendations_id;
+                $rec_ids[] = $rid;
+                $rec_meta_by_id[$rid] = array(
+                    'mundane_id' => $row->mundane_id,
+                    'recommended_by_id' => (int)$row->recommended_by_id,
+                    'kingdomaward_id' => $row->ka_kaward_id,
+                    'rank' => (int)$row->rank,
+                );
+                $rawRows[] = $row;
+            }
 
-			// Second pass: batch-fetch Master-peerage holdings for any mundanes whose recs target a ladder.
-			$heldMasters = array(); // mundane_id => [master_award_id => true]
-			if (!empty($needMundaneIds) && !empty($masterIdSet)) {
-				$midCsv = implode(',', array_map('intval', array_keys($needMundaneIds)));
-				$maCsv  = implode(',', array_map('intval', array_keys($masterIdSet)));
-				$mRes = $this->db->query(
-					"SELECT mundane_id, award_id FROM " . DB_PREFIX . "awards
+            // Second pass: batch-fetch Master-peerage holdings for any mundanes whose recs target a ladder.
+            $heldMasters = array(); // mundane_id => [master_award_id => true]
+            if (!empty($needMundaneIds) && !empty($masterIdSet)) {
+                $midCsv = implode(',', array_map('intval', array_keys($needMundaneIds)));
+                $maCsv  = implode(',', array_map('intval', array_keys($masterIdSet)));
+                $mRes = $this->db->query(
+                    "SELECT mundane_id, award_id FROM " . DB_PREFIX . "awards
 					 WHERE mundane_id IN ({$midCsv}) AND award_id IN ({$maCsv})"
-				);
-				if ($mRes !== false && $mRes->size() > 0) {
-					while ($mRes->next()) {
-						$heldMasters[(int)$mRes->mundane_id][(int)$mRes->award_id] = true;
-					}
-				}
-			}
+                );
+                if ($mRes !== false && $mRes->size() > 0) {
+                    while ($mRes->next()) {
+                        $heldMasters[(int)$mRes->mundane_id][(int)$mRes->award_id] = true;
+                    }
+                }
+            }
 
-			// Final pass: build response, flipping AlreadyHas when a Master peerage covers a ladder rec.
-			// Custom awards (base Award with is_ladder=0 AND is_title=0) can legitimately be held many
-			// times, so they must never be filtered out as "already has".
-			$response['AwardRecommendations'] = array();
-			foreach ($rawRows as $row) {
-				$recAwardId = $row->ka_award_id ?: $row->recs_award_id;
-				$isCustom   = ($row->a_is_ladder === 0 && $row->a_is_title === 0);
-				$alreadyHas = $isCustom ? false : ($row->kacount > 0 || $row->awcount > 0);
-				$coveredByMaster = false;
-				if (!$isCustom && !$alreadyHas && isset($ladderMap[$recAwardId])) {
-					foreach ((array)$ladderMap[$recAwardId]['MasterAwardIds'] as $mAid) {
-						if (!empty($heldMasters[$row->mundane_id][(int)$mAid])) {
-							$alreadyHas = true;
-							$coveredByMaster = true;
-							break;
-						}
-					}
-				}
-				$response['AwardRecommendations'][] = array(
-					'RecommendationsId' => $row->recommendations_id,
-					'MundaneId' => $row->mundane_id,
-					'Persona' => $row->persona,
-					'DateRecommended' => $row->date_recommended,
-					'Rank' => $row->rank,
-					'AwardName' => $row->award_name,
-					'Reason' => $row->reason,
-					'RecommendedByName' => $row->recommended_by_persona,
-					'RecommendedById' => $row->recommended_by_id,
-					'MaskGiver' => $row->mask_giver,
-					'KingdomAwardId' => $row->ka_kaward_id,
-					'AwardId' => $recAwardId,
-					'ParkId' => $row->park_id,
-					'KingdomId' => $row->kingdom_id,
-					'ParkName' => $row->park_name,
-					'KingdomName' => $row->kingdom_name,
-					'AlreadyHas' => $alreadyHas,
-					'CoveredByMaster' => $coveredByMaster,
-					'CurrentRank' => $alreadyHas ? ($row->player_ka_rank ?: null) : null,
-					'CurrentRankDate' => $alreadyHas ? $row->player_ka_date : null,
-					'Seconds' => array(),
-					'SecondsCount' => 0,
-					'ViewerCanSecond' => false,
-					'ViewerCanEditReason' => false,
-				);
-			}
+            // Final pass: build response, flipping AlreadyHas when a Master peerage covers a ladder rec.
+            // Custom awards (is_ladder=0 AND is_title=0) can legitimately be held many
+            // times, so they must never be filtered out as "already has". The title flag
+            // is read through the per-kingdom override: a kingdom that flags its own
+            // award as a title otherwise looked infinitely repeatable here and never got
+            // an AlreadyHas / green-rank signal in the Manager.
+            $response['AwardRecommendations'] = array();
+            foreach ($rawRows as $row) {
+                $recAwardId = $row->ka_award_id ?: $row->recs_award_id;
+                // Effective title flag is GREATEST, not COALESCE: ork_kingdomaward.is_title
+                // is `tinyint(1) NOT NULL DEFAULT 0`, so COALESCE(ka.is_title, a.is_title)
+                // never falls through to the catalog and a base-catalog title whose kingdom
+                // row still reads 0 would look infinitely repeatable here. "Either side says
+                // so" — the same reading as Court::SQL_EFFECTIVE_IS_TITLE.
+                $effIsTitle  = max((int)$row->ka_is_title, (int)$row->a_is_title);
+                // Third case: a kingdom-original ladder has no catalog row, so neither
+                // is_ladder column can ever be 1 for it. Award::effectiveIsLadder adds
+                // the curated list. This also corrects $isCustom below -- such an award
+                // was being treated as a repeatable custom award, which suppressed its
+                // AlreadyHas detection entirely.
+                $effIsLadder = Award::effectiveIsLadder(
+                    (int)$row->ka_kaward_id,
+                    (int)$row->ka_is_ladder,
+                    (int)$row->a_is_ladder
+                ) ? 1 : 0;
+                $isCustom    = ($effIsLadder === 0 && $effIsTitle === 0);
+                // A ladder recommendation with no rank means "rank unspecified", NOT
+                // "rank 0" -- and AlreadyHas compares held_rank >= rec_rank, which any
+                // held rank satisfies against 0. So every such rec for someone who
+                // already holds the award would read "already has" and drop out of the
+                // Open list: exactly the recs an officer needs to see, hidden. Until a
+                // rank is chosen the question is undecidable, so answer no, which is
+                // also what these recs did before their award was recognised as a ladder.
+                $rankUnset   = ($effIsLadder === 1 && (int)$row->rank === 0);
+                $alreadyHas = ($isCustom || $rankUnset) ? false : ($row->kacount > 0 || $row->awcount > 0 || $row->eqcount > 0);
+                $coveredByMaster = false;
+                if (!$isCustom && !$alreadyHas && isset($ladderMap[$recAwardId])) {
+                    foreach ((array)$ladderMap[$recAwardId]['MasterAwardIds'] as $mAid) {
+                        if (!empty($heldMasters[$row->mundane_id][(int)$mAid])) {
+                            $alreadyHas = true;
+                            $coveredByMaster = true;
+                            break;
+                        }
+                    }
+                }
+                // NOTE: masking is deliberately NOT applied here. This response is
+                // cached for 300s under a key with no viewer dimension, so folding a
+                // per-viewer decision into it leaks across viewers: an admin warming
+                // the cache would expose every anonymous recommender to non-admins for
+                // the life of the entry. The unmasked identity is cached and
+                // applyViewerFlags() masks per call, alongside the other viewer flags.
+                $isAnon = ((int)$row->mask_giver === 1);
+                $isSnoozed     = $row->snoozed_monarch_id !== null
+                    && (int)$row->snoozed_monarch_id === (int)$row->current_monarch_id
+                    && (int)$row->snoozed_regent_id  === (int)$row->current_regent_id;
+                $ageDays = 0;
+                if (!empty($row->date_recommended)) {
+                    try {
+                        $ageDays = (int)(new DateTime())->diff(new DateTime($row->date_recommended))->days;
+                    } catch (\Throwable $e) {
+                    }
+                }
+                $response['AwardRecommendations'][] = array(
+                    'RecommendationsId' => $row->recommendations_id,
+                    'MundaneId' => $row->mundane_id,
+                    'Persona' => $row->persona,
+                    'DateRecommended' => $row->date_recommended,
+                    'Rank' => $row->rank,
+                    'AwardName' => $row->award_name,
+                    'Reason' => $row->reason,
+                    'IsAnonymous' => $isAnon,
+                    // Dismissal is surfaced only when the caller asked for it; a
+                    // live-only page never carries these.
+                    'IsDismissed'        => !empty($row->deleted_by),
+                    'DismissedAt'        => $row->deleted_at,
+                    'DismissedByPersona' => $row->deleted_by_persona,
+                    'RecommendedByName' => $row->recommended_by_persona,
+                    'RecommendedById'   => $row->recommended_by_id,
+                    'MaskGiver' => $row->mask_giver,
+                    'KingdomAwardId' => $row->ka_kaward_id,
+                    // Authoritative ladder flag. Consumers must use this, never `Rank > 0`.
+                    'IsLadder' => (bool)$effIsLadder,
+                    'AwardId' => $recAwardId,
+                    'ParkId' => $row->park_id,
+                    'KingdomId' => $row->kingdom_id,
+                    'ParkName' => $row->park_name,
+                    'KingdomName' => $row->kingdom_name,
+                    'IsRetired' => ((int)$row->m_active !== 1),
+                    'AlreadyHas' => $alreadyHas,
+                    'CoveredByMaster' => $coveredByMaster,
+                    'CurrentRank' => $alreadyHas ? ($row->player_ka_rank ?: null) : null,
+                    'CurrentRankDate' => $alreadyHas ? $row->player_ka_date : null,
+                    // Actual highest held rank for this award (always — not gated on AlreadyHas),
+                    // so the Grant modal's rank pills can shade already-earned ranks green.
+                    'HeldRank' => (int)$row->player_ka_rank,
+                    'Seconds' => array(),
+                    'SecondsCount' => 0,
+                    'ViewerCanSecond' => false,
+                    'ViewerCanEditReason' => false,
+                    'IsSnoozed' => $isSnoozed,
+                    'IsOnCourt' => $row->on_court_count > 0,
+                    'AgeDays'   => $ageDays,
+                    'PassedToLocal'   => (int)$row->passed_to_local === 1,
+                    'PassedToLocalBy' => $row->passed_to_local_by ? (int)$row->passed_to_local_by : null,
+                    'PassedToLocalAt' => $row->passed_to_local_at,
+                    'MonarchyOnly'      => (int)$row->monarchy_only,
+                    'MonarchyOnlyLevel' => RecommendationVisibility::effectiveLevel((int)$row->monarchy_only, (int)$row->passed_to_local === 1),
+                );
+            }
 
-			// Batch-fetch all active seconds (IsMine = false; applyViewerFlags sets it per-viewer).
-			$seconds_by_rec = Ork3::$Lib->player->GetSecondsForRecommendations($rec_ids, 0);
+            // Batch-fetch all active seconds (IsMine = false; applyViewerFlags sets it per-viewer).
+            // The unfiltered in-process variant: hidden rows are cached here and dropped
+            // per request, so their seconds must be cached alongside them.
+            $seconds_by_rec = Ork3::$Lib->player->seconds_for_recommendations($rec_ids, 0);
 
-			// Attach seconds; viewer flags are left false and filled in by applyViewerFlags.
-			foreach ($response['AwardRecommendations'] as &$rec) {
-				$rid = (int)$rec['RecommendationsId'];
-				$rec['Seconds']      = isset($seconds_by_rec[$rid]) ? $seconds_by_rec[$rid] : array();
-				$rec['SecondsCount'] = count($rec['Seconds']);
-			}
-			unset($rec);
+            // Attach seconds; viewer flags are left false and filled in by applyViewerFlags.
+            foreach ($response['AwardRecommendations'] as &$rec) {
+                $rid = (int)$rec['RecommendationsId'];
+                $rec['Seconds']      = isset($seconds_by_rec[$rid]) ? $seconds_by_rec[$rid] : array();
+                $rec['SecondsCount'] = count($rec['Seconds']);
+            }
+            unset($rec);
 
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		$cached = Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-		return $this->applyViewerFlags($cached, $viewer_id);
-	}
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        if ($skipCache) {
+            $cached = $response;
+        } else {
+            $cached = Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+        }
+        // Filter BEFORE applyViewerFlags (masking nulls RecommendedById, which the
+        // author rule reads) and AFTER the cache write, so the cache stays viewer-agnostic.
+        return $this->applyViewerFlags(Ork3::$Lib->recommendationvisibility->filterRecommendations($cached, $hideViewer), $viewer_id);
+    }
 
-	// Compute viewer-specific flags on top of a cached (viewer-agnostic) recommendations
-	// response. IsMine and ViewerCanEditReason need no DB queries. ViewerCanSecond needs
-	// two lightweight IN-list lookups.
-	private function applyViewerFlags(array $response, int $viewer_id): array {
-		if ($viewer_id <= 0 || empty($response['AwardRecommendations'])) return $response;
+    /**
+     * One 500-row (cluster) page of Manager recommendations, fully server-side
+     * filtered/sorted. Never selects the full set. Returns:
+     *   ['Groups' => [...≤Limit grouped rows...], 'Total' => int, 'HasMore' => bool]
+     *
+     * SkipCount (optional): the caller has established that the filter set is unchanged
+     * since it last got a Total — an offset-only infinite-scroll batch. The grouped
+     * COUNT (the same correlated subqueries as the page query, over the whole scope) is
+     * then not run at all and Total comes back NULL, meaning "keep the one you have";
+     * HasMore falls back to "this page came back full". Pass KnownTotal instead to have
+     * that previous total echoed back in place of a recomputed one.
+     */
+    public function PlayerAwardRecommendationsPage($request)
+    {
+        $limit  = max(1, (int)($request['Limit']  ?? 500));
+        $offset = max(0, (int)($request['Offset'] ?? 0));
+        $knownTotal = (isset($request['KnownTotal']) && $request['KnownTotal'] !== '' && is_numeric($request['KnownTotal']))
+            ? max(0, (int)$request['KnownTotal'])
+            : null;
+        $skipCount = ($knownTotal === null) && !empty($request['SkipCount']);
 
-		$rec_ids  = array_map(function($r) { return (int)$r['RecommendationsId']; }, $response['AwardRecommendations']);
-		$rid_list = implode(',', $rec_ids);
+        // "Show dismissed": relax the soft-delete filter. It has to move in BOTH the
+        // paging query and the hydration id lookup below, or dismissed clusters would
+        // be counted and paged but then hydrate to nothing.
+        $includeDismissed     = !empty($request['IncludeDismissed']);
+        $pageDismissedClause  = $includeDismissed
+            ? '1 = 1'
+            : '(recs.deleted_by IS NULL OR recs.deleted_by = 0)';
 
-		// Viewer's own active primary recs on the same (mundane, award, rank) slots.
-		$viewer_own_keys = array();
-		$this->db->Clear();
-		$or = $this->db->query(
-			"SELECT DISTINCT CONCAT(r2.mundane_id,'|',r2.kingdomaward_id,'|',COALESCE(r2.rank,0)) AS k
+        $scope = '';
+        if (valid_id($request['KingdomId'] ?? 0)) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $scope = " AND m.kingdom_id IN ($kidList)";
+        } elseif (valid_id($request['ParkId'] ?? 0)) {
+            $scope = ' AND m.park_id = ' . (int)$request['ParkId'];
+        }
+
+        // Monarchy Only: the same rule PlayerAwardRecommendations applies per row, as SQL,
+        // so the paging/total and the hydrated rows agree (else batches come back short).
+        $vis        = Ork3::$Lib->recommendationvisibility;
+        $hideViewer = $vis->viewerFromToken($request['Token'] ?? '');
+        if (valid_id($request['KingdomId'] ?? 0)) {
+            $scopeKids = Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']);
+        } else {
+            $scopeKids = [$vis->kingdomOfPark((int)($request['ParkId'] ?? 0))];
+        }
+        $visClause = ' AND ' . $vis->sqlPredicate($hideViewer, 'recs', 'm', $scopeKids);
+
+        $where = [];
+        $search = trim((string)($request['Search'] ?? ''));
+        if ($search !== '') {
+            $where[] = "m.persona LIKE '%" . addslashes($search) . "%'";
+        }
+        if (($request['Park'] ?? 'all') !== 'all' && valid_id($request['Park'] ?? 0)) {
+            $where[] = 'm.park_id = ' . (int)$request['Park'];
+        }
+        if (!empty($request['PassLocal'])) {
+            $where[] = 'recs.passed_to_local = 1';
+        }
+        $court = (string)($request['Court'] ?? 'all');
+        if ($court === 'none') {
+            $where[] = '(SELECT COUNT(*) FROM ' . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.status != 'cancelled') = 0";
+        } elseif ($court === 'any') {
+            $where[] = '(SELECT COUNT(*) FROM ' . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.status != 'cancelled') > 0";
+        } elseif (strpos($court, 'court:') === 0) {
+            $cid = (int)substr($court, 6);
+            $where[] = 'EXISTS (SELECT 1 FROM ' . DB_PREFIX . "court_award ca WHERE ca.recommendations_id = recs.recommendations_id AND ca.court_id = $cid AND ca.status != 'cancelled')";
+        }
+        // Read the snoozed seat back from the scope the snooze was TAKEN at
+        // (snoozed_kingdom_id/snoozed_park_id); pre-scope snoozes stored NULL there and
+        // fall back to the recipient's own park, which is what they were written against.
+        $seatSub = function ($role) {
+            return "COALESCE((SELECT o.mundane_id FROM " . DB_PREFIX . "officer o"
+                . " WHERE o.kingdom_id = COALESCE(recs.snoozed_kingdom_id, m.kingdom_id)"
+                . " AND o.park_id = COALESCE(recs.snoozed_park_id, m.park_id)"
+                . " AND o.role = '" . $role . "' ORDER BY o.officer_id DESC LIMIT 1), 0)";
+        };
+        $snoozedExpr = "(recs.snoozed_monarch_id IS NOT NULL"
+            . " AND recs.snoozed_monarch_id = " . $seatSub('Monarch')
+            . " AND recs.snoozed_regent_id  = " . $seatSub('Regent') . ")";
+        // Master-peerage coverage: holding a Master/peerage award covers its ladder. Mirror the
+        // PHP AlreadyHas refinement (Award::GetLadderMasterMap) in SQL so the page count is EXACT
+        // (no over-count of open/ator, no short batches).
+        $lmRows = [];
+        foreach (Award::GetLadderMasterMap() as $ladderAwardId => $lmInfo) {
+            foreach ((array)($lmInfo['MasterAwardIds'] ?? []) as $mAid) {
+                $lmRows[] = 'SELECT ' . (int)$ladderAwardId . ' AS la, ' . (int)$mAid . ' AS ma';
+            }
+        }
+        $masterCoverExpr = $lmRows
+            ? "EXISTS (SELECT 1 FROM (" . implode(' UNION ALL ', $lmRows) . ") lmx"
+                . " JOIN " . DB_PREFIX . "awards mo ON mo.mundane_id = recs.mundane_id AND mo.award_id = lmx.ma"
+                . " WHERE lmx.la = IF(IFNULL(ka.award_id,0)=0, recs.award_id, ka.award_id))"
+            : '0';
+        $alreadyExpr = "((SELECT COUNT(*) FROM " . DB_PREFIX . "awards oa WHERE oa.mundane_id = recs.mundane_id AND oa.kingdomaward_id = ka.kingdomaward_id AND oa.rank >= COALESCE(recs.rank,0)) > 0"
+            . " OR (SELECT COUNT(*) FROM " . DB_PREFIX . "awards oa2 WHERE oa2.mundane_id = recs.mundane_id AND oa2.award_id = recs.award_id AND recs.award_id NOT IN (" . implode(',', Ork3::$Lib->award->sharedAwardIds()) . ") AND oa2.rank >= COALESCE(recs.rank,0)) > 0"
+            . " OR EXISTS (SELECT 1 FROM " . DB_PREFIX . "awards oa3 WHERE oa3.mundane_id = recs.mundane_id AND " . Ork3::$Lib->award->sqlPseudoLadderEquivalentHeld('oa3', 'ka', 'COALESCE(recs.rank,0)') . ")"
+            . " OR " . $masterCoverExpr . ")";
+        // Must stay the exact SQL twin of the $isCustom test in PlayerAwardRecommendations
+        // (per-kingdom title override folded in), or the count/paging prefilter and the PHP
+        // post-filter disagree and batches come back short.
+        // Both axes use GREATEST, not COALESCE, and both must — matching class.Court.php.
+        // ork_kingdomaward.is_ladder/.is_title are tinyint NOT NULL DEFAULT 0, so
+        // COALESCE(ka.x, a.x) can never fall through to the base award. Measured on the
+        // dev snapshot: 9 kingdomawards mark a non-ladder base award as their own ladder,
+        // and those were classified "custom" (infinitely repeatable) while the title axis
+        // was already fixed. A custom award is one that is neither, under either reading.
+        // Third case folded in via Award::sqlEffectiveIsLadder: a kingdom-original
+        // ladder has no catalog row, so neither is_ladder column is ever 1 for it.
+        $ladderExpr = Award::sqlEffectiveIsLadder('ka', 'a');
+        $customExpr = '(' . $ladderExpr . ' = 0'
+            . ' AND GREATEST(COALESCE(ka.is_title, 0), COALESCE(a.is_title, 0)) = 0)';
+        // Mirrors $rankUnset in PlayerAwardRecommendations: for a ladder rec with no
+        // rank, "already has" is undecidable (held_rank >= 0 is always true), so it is
+        // treated like a custom award -- never filtered out as already held. Keep these
+        // two definitions in step or the prefilter and the PHP post-filter disagree and
+        // batches come back short.
+        $undecidableExpr = '(' . $customExpr . ' OR (' . $ladderExpr . ' = 1 AND COALESCE(recs.rank,0) = 0))';
+
+        $elig = (string)($request['Eligibility'] ?? 'open');
+        if ($elig === 'snoozed') {
+            $where[] = $snoozedExpr;
+        } elseif ($elig === 'nonladder') {
+            // Was 'COALESCE(recs.rank,0) = 0' -- i.e. "has no rank", which swept every
+            // rank-less LADDER recommendation in here and was exactly what hid them
+            // from the officer who needed to set their rank.
+            $where[] = $ladderExpr . ' = 0';
+            $where[] = "NOT $snoozedExpr";
+        } elseif ($elig === 'ator') {
+            $where[] = "NOT $undecidableExpr AND $alreadyExpr";
+            $where[] = "NOT $snoozedExpr";
+        } elseif ($elig === 'below') {
+            $where[] = "($ladderExpr = 1) AND ($undecidableExpr OR NOT $alreadyExpr)";
+            $where[] = "NOT $snoozedExpr";
+        } elseif ($elig === 'open') {
+            $where[] = "($undecidableExpr OR NOT $alreadyExpr)";
+            $where[] = "NOT $snoozedExpr";
+        }
+
+        $whereSql = $where ? (' AND ' . implode(' AND ', $where)) : '';
+
+        // Advocate count for the 'supp' sort tiebreaker only (the displayed SupportCount is
+        // computed authoritatively in PHP by groupRecommendations()). MariaDB cannot correlate
+        // the outer `recs` alias through a derived table (UNION-in-FROM → "Unknown column
+        // recs.mundane_id"), so count distinct recommenders + distinct seconders as two
+        // single-level correlated subqueries summed, each excluding the recipient.
+        // Hidden recs the viewer may not see must not leak into the support count either.
+        // r2/r3 share the outer recipient (recs.mundane_id = m.mundane_id), so `m` is the
+        // right mundane alias for the predicate.
+        $visR2 = ' AND ' . $vis->sqlPredicate($hideViewer, 'r2', 'm', $scopeKids);
+        $visR3 = ' AND ' . $vis->sqlPredicate($hideViewer, 'r3', 'm', $scopeKids);
+        $supportSub = "("
+            . "(SELECT COUNT(DISTINCT r2.recommended_by_id) FROM " . DB_PREFIX . "recommendations r2 WHERE r2.mundane_id = recs.mundane_id AND r2.kingdomaward_id = recs.kingdomaward_id AND COALESCE(r2.rank,0)=COALESCE(recs.rank,0) AND r2.recommended_by_id IS NOT NULL AND r2.recommended_by_id <> recs.mundane_id AND (r2.deleted_by IS NULL OR r2.deleted_by=0)" . $visR2 . ")"
+            . " + "
+            . "(SELECT COUNT(DISTINCT s.supporter_mundane_id) FROM " . DB_PREFIX . "recommendation_seconds s JOIN " . DB_PREFIX . "recommendations r3 ON r3.recommendations_id = s.recommendations_id WHERE r3.mundane_id = recs.mundane_id AND r3.kingdomaward_id = recs.kingdomaward_id AND COALESCE(r3.rank,0)=COALESCE(recs.rank,0) AND s.supporter_mundane_id <> recs.mundane_id AND s.deleted_at IS NULL" . $visR3 . ")"
+            . ")";
+
+        $dir = (strtolower((string)($request['SortDir'] ?? 'desc')) === 'asc') ? 'ASC' : 'DESC';
+        switch ((string)($request['SortKey'] ?? 'date')) {
+            case 'recip': $order = "m.persona $dir, award_name ASC, COALESCE(recs.rank,0) ASC";
+                break;
+            case 'award': $order = "award_name $dir, COALESCE(recs.rank,0) $dir, m.persona ASC";
+                break;
+            case 'rank':  $order = "COALESCE(recs.rank,0) $dir, award_name ASC, m.persona ASC";
+                break;
+            case 'supp':  $order = "support_count $dir, MIN(recs.date_recommended) DESC";
+                break;
+            case 'date':
+            default:      $order = "MIN(recs.date_recommended) $dir, m.persona ASC";
+                break;
+        }
+
+        $base = " FROM " . DB_PREFIX . "recommendations recs"
+            . " LEFT JOIN " . DB_PREFIX . "kingdomaward ka ON ka.kingdomaward_id = recs.kingdomaward_id"
+            . " LEFT JOIN " . DB_PREFIX . "award a ON a.award_id = ka.award_id"
+            . " LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id"
+            . " WHERE $pageDismissedClause"
+            . " AND (m.suspended IS NULL OR m.suspended = 0)"
+            . $scope . $whereSql . $visClause;
+
+        if ($knownTotal !== null) {
+            $total = $knownTotal;
+        } elseif ($skipCount) {
+            // NULL, not 0: "not recomputed", so the caller keeps the count it has.
+            $total = null;
+        } else {
+            $this->db->Clear();
+            $cnt = $this->db->query("SELECT COUNT(*) AS n FROM (SELECT recs.mundane_id $base GROUP BY recs.mundane_id, recs.kingdomaward_id, COALESCE(recs.rank,0)) t");
+            $total = ($cnt !== false && $cnt->next()) ? (int)$cnt->n : 0;
+        }
+
+        $this->db->Clear();
+        $pageSql = "SELECT recs.mundane_id, recs.kingdomaward_id, COALESCE(recs.rank,0) AS rk,"
+            . " MIN(ifnull(ka.name, a.name)) AS award_name, MIN(recs.date_recommended) AS oldest,"
+            . " $supportSub AS support_count,"
+            . " MIN(recs.recommendations_id) AS any_rec_id"
+            . " $base"
+            . " GROUP BY recs.mundane_id, recs.kingdomaward_id, COALESCE(recs.rank,0)"
+            . " ORDER BY $order"
+            . " LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
+        $pr = $this->db->query($pageSql);
+        $clusters = [];
+        if ($pr !== false) {
+            while ($pr->next()) {
+                $clusters[] = [(int)$pr->mundane_id, (int)$pr->kingdomaward_id, (int)$pr->rk];
+            }
+        }
+        if (empty($clusters)) {
+            return ['Groups' => [], 'Total' => $total, 'HasMore' => false, 'NextOffset' => $offset];
+        }
+
+        $orParts = [];
+        foreach ($clusters as $c) {
+            $orParts[] = '(recs.mundane_id = ' . $c[0] . ' AND recs.kingdomaward_id = ' . $c[1] . ' AND COALESCE(recs.rank,0) = ' . $c[2] . ')';
+        }
+        $this->db->Clear();
+        $ir = $this->db->query("SELECT recs.recommendations_id FROM " . DB_PREFIX . "recommendations recs LEFT JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id WHERE $pageDismissedClause AND (" . implode(' OR ', $orParts) . ")" . $visClause);
+        $pageRecIds = [];
+        if ($ir !== false) {
+            while ($ir->next()) {
+                $pageRecIds[] = (int)$ir->recommendations_id;
+            }
+        }
+
+        $hyd = $this->PlayerAwardRecommendations([
+            'KingdomId'   => (int)($request['KingdomId'] ?? 0),
+            'ParkId'      => (int)($request['ParkId'] ?? 0),
+            'PlayerId'    => 0,
+            'RequestedBy' => (int)($request['RequestedBy'] ?? 0),
+            'Token'       => $request['Token'] ?? '',
+            'RecommendationsIdIn' => $pageRecIds,
+            'SkipCache'   => true,
+            'IncludeDismissed' => $includeDismissed,
+        ]);
+        $rows = is_array($hyd) && isset($hyd['AwardRecommendations']) ? $hyd['AwardRecommendations'] : [];
+
+        $groups = $this->groupRecommendations($rows);
+
+        $groups = array_values(array_filter($groups, function ($g) use ($elig) {
+            $already = !empty($g['AlreadyHas']);
+            $snoozed = !empty($g['IsSnoozed']);
+            // Must mirror the SQL prefilter above exactly, or batches come back
+            // short. Both now key on the ladder flag, not on `Rank > 0`.
+            $isLadder = !empty($g['IsLadder']);
+            switch ($elig) {
+                case 'all':       return true;
+                case 'snoozed':   return $snoozed;
+                case 'nonladder': return !$isLadder && !$snoozed;
+                case 'ator':      return $already && !$snoozed;
+                case 'below':     return $isLadder && !$already && !$snoozed;
+                case 'open':
+                default:          return !$already && !$snoozed;
+            }
+        }));
+
+        $pos = [];
+        foreach ($clusters as $i => $c) {
+            $pos[$c[0] . ':' . $c[1] . ':' . $c[2]] = $i;
+        }
+        usort($groups, function ($x, $y) use ($pos) {
+            $kx = $x['MundaneId'] . ':' . $x['KingdomAwardId'] . ':' . $x['Rank'];
+            $ky = $y['MundaneId'] . ':' . $y['KingdomAwardId'] . ':' . $y['Rank'];
+            return ($pos[$kx] ?? 1000000000) <=> ($pos[$ky] ?? 1000000000);
+        });
+
+        $nextOffset = $offset + count($clusters);   // advance by SQL page size, not post-filtered count
+        // With the count skipped there is no total to compare against, so a page that
+        // came back full is the "there is probably more" signal.
+        $hasMore = ($total === null) ? (count($clusters) >= $limit) : ($nextOffset < $total);
+        return ['Groups' => $groups, 'Total' => $total, 'HasMore' => $hasMore, 'NextOffset' => $nextOffset];
+    }
+
+    // Compute viewer-specific flags on top of a cached (viewer-agnostic) recommendations
+    // response. IsMine and ViewerCanEditReason need no DB queries. ViewerCanSecond needs
+    // two lightweight IN-list lookups.
+    /**
+     * Hide an anonymous recommender's identity from everyone but an admin.
+     *
+     * Must run per REQUEST, never at cache-write time: the recommendations response
+     * is cached under a viewer-agnostic key, so a decision made for whoever warmed
+     * the cache would be served to every other viewer for the rest of the TTL.
+     * Callers must derive any viewer flag that depends on the recommender's identity
+     * (ViewerCanEditReason, ViewerCanSecond) BEFORE calling this — afterwards the id
+     * is gone. Consumers treat a null RecommendedById as "masked" and render a dash.
+     */
+    private function maskAnonymousRecommender(array &$rec, bool $viewerIsAdmin): void
+    {
+        if (empty($rec['IsAnonymous']) || $viewerIsAdmin) {
+            return;
+        }
+        $rec['RecommendedByName'] = null;
+        $rec['RecommendedById']   = null;
+    }
+
+    private function applyViewerFlags(array $response, int $viewer_id): array
+    {
+        if (empty($response['AwardRecommendations'])) {
+            return $response;
+        }
+
+        $viewerIsAdmin = $viewer_id > 0
+            && Ork3::$Lib->authorization->HasAuthority($viewer_id, AUTH_ADMIN, 0, AUTH_EDIT);
+
+        // Logged-out / no viewer: skip the per-viewer lookups, but masking still has
+        // to happen — a signed-out visitor is emphatically not an admin.
+        if ($viewer_id <= 0) {
+            foreach ($response['AwardRecommendations'] as &$anonRec) {
+                $this->maskAnonymousRecommender($anonRec, $viewerIsAdmin);
+            }
+            unset($anonRec);
+            return $response;
+        }
+
+        $rec_ids  = array_map(function ($r) {
+            return (int)$r['RecommendationsId'];
+        }, $response['AwardRecommendations']);
+        $rid_list = implode(',', $rec_ids);
+
+        // Viewer's own active primary recs on the same (mundane, award, rank) slots.
+        $viewer_own_keys = array();
+        $this->db->Clear();
+        $or = $this->db->query(
+            "SELECT DISTINCT CONCAT(r2.mundane_id,'|',r2.kingdomaward_id,'|',COALESCE(r2.rank,0)) AS k
 			 FROM " . DB_PREFIX . "recommendations r2
 			 WHERE r2.recommended_by_id = $viewer_id AND r2.deleted_at IS NULL
 			   AND (r2.mundane_id, r2.kingdomaward_id, COALESCE(r2.rank,0)) IN (
 				   SELECT r3.mundane_id, r3.kingdomaward_id, COALESCE(r3.rank,0)
 				   FROM " . DB_PREFIX . "recommendations r3
 				   WHERE r3.recommendations_id IN ($rid_list)
-			   )");
-		if ($or !== false && $or->size() > 0) {
-			while ($or->next()) $viewer_own_keys[$or->k] = true;
-		}
+			   )"
+        );
+        if ($or !== false && $or->size() > 0) {
+            while ($or->next()) {
+                $viewer_own_keys[$or->k] = true;
+            }
+        }
 
-		// Recs the viewer has already seconded.
-		$viewer_seconded = array();
-		$this->db->Clear();
-		$sr = $this->db->query(
-			"SELECT recommendations_id FROM " . DB_PREFIX . "recommendation_seconds
+        // Recs the viewer has already seconded.
+        $viewer_seconded = array();
+        $this->db->Clear();
+        $sr = $this->db->query(
+            "SELECT recommendations_id FROM " . DB_PREFIX . "recommendation_seconds
 			 WHERE supporter_mundane_id = $viewer_id AND deleted_at IS NULL
-			   AND recommendations_id IN ($rid_list)");
-		if ($sr !== false && $sr->size() > 0) {
-			while ($sr->next()) $viewer_seconded[(int)$sr->recommendations_id] = true;
-		}
+			   AND recommendations_id IN ($rid_list)"
+        );
+        if ($sr !== false && $sr->size() > 0) {
+            while ($sr->next()) {
+                $viewer_seconded[(int)$sr->recommendations_id] = true;
+            }
+        }
 
-		foreach ($response['AwardRecommendations'] as &$rec) {
-			$rid    = (int)$rec['RecommendationsId'];
-			$ownKey = $rec['MundaneId'] . '|' . $rec['KingdomAwardId'] . '|' . (int)($rec['Rank'] ?? 0);
-			$rec['ViewerCanEditReason'] = ($viewer_id === (int)$rec['RecommendedById']);
-			$rec['ViewerCanSecond'] = (
-				$viewer_id !== (int)$rec['MundaneId']
-				&& $viewer_id !== (int)$rec['RecommendedById']
-				&& empty($viewer_own_keys[$ownKey])
-				&& empty($viewer_seconded[$rid])
-			);
-			foreach ($rec['Seconds'] as &$second) {
-				$second['IsMine'] = ((int)$second['SupporterMundaneId'] === $viewer_id);
-			}
-			unset($second);
-		}
-		unset($rec);
-		return $response;
-	}
+        foreach ($response['AwardRecommendations'] as &$rec) {
+            $rid    = (int)$rec['RecommendationsId'];
+            $ownKey = $rec['MundaneId'] . '|' . $rec['KingdomAwardId'] . '|' . (int)($rec['Rank'] ?? 0);
+            // Derived from the UNMASKED id on purpose: the person who filed an
+            // anonymous recommendation is still its author and may edit their own
+            // reason. Masking below then removes the id from what the viewer sees.
+            $rec['ViewerCanEditReason'] = ($viewer_id === (int)$rec['RecommendedById']);
+            $rec['ViewerCanSecond'] = (
+                $viewer_id !== (int)$rec['MundaneId']
+                && $viewer_id !== (int)$rec['RecommendedById']
+                && empty($viewer_own_keys[$ownKey])
+                && empty($viewer_seconded[$rid])
+            );
+            foreach ($rec['Seconds'] as &$second) {
+                $second['IsMine'] = ((int)$second['SupporterMundaneId'] === $viewer_id);
+            }
+            unset($second);
+            $this->maskAnonymousRecommender($rec, $viewerIsAdmin);
+        }
+        unset($rec);
+        return $response;
+    }
 
-	// Lightweight "how many active recs for this kingdom does this viewer see"
-	// query. Skips the heavy joins / per-row subqueries the full recommendations
-	// report runs, so it's cheap enough to call on every kingdom profile load
-	// just to render the "Recommendations (N)" tab badge.
-	public function PlayerAwardRecommendationsCount($request) {
-		$kid = (int)($request['KingdomId'] ?? 0);
-		if ($kid <= 0) return 0;
-		// Match PlayerAwardRecommendations: roll up principalities when the parent
-		// kingdom's IncludePrincipalityInStatistics flag is on, so the badge stays
-		// in sync with what the lazy-loaded panel actually shows.
-		$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kid)));
-		$key = Ork3::$Lib->ghettocache->key([
-			'KingdomIds'    => $kidList,
-			'RecommendedBy' => (int)($request['RecommendedBy'] ?? 0),
-		]);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false)
-			return (int)$cache;
+    // Lightweight "how many active recs for this kingdom does this viewer see"
+    // query. Skips the heavy joins / per-row subqueries the full recommendations
+    // report runs, so it's cheap enough to call on every kingdom profile load
+    // just to render the "Recommendations (N)" tab badge.
+    public function PlayerAwardRecommendationsCount($request)
+    {
+        $kid = (int)($request['KingdomId'] ?? 0);
+        if ($kid <= 0) {
+            return 0;
+        }
+        // Match PlayerAwardRecommendations: roll up principalities when the parent
+        // kingdom's IncludePrincipalityInStatistics flag is on, so the badge stays
+        // in sync with what the lazy-loaded panel actually shows.
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kid)));
+        // Only the kingdom-wide badge (RecommendedBy 0) is cached. A RecommendedBy-scoped
+        // count is one user's own recs — an indexed, per-user query nothing else shares —
+        // and no write busts its key: the author's entry kept counting a rec as public
+        // after it was hidden, and the uncached hidden half counted it again (the badge
+        // read N+1 for up to the TTL). Not caching it removes that whole class of drift.
+        $cacheable = empty($request['RecommendedBy']);
+        $key = Ork3::$Lib->ghettocache->key([
+            'KingdomIds'    => $kidList,
+            'RecommendedBy' => 0,
+            // Bumped when the counted predicate changes, so entries cached under the
+            // previous rule are not served for the rest of their TTL.
+            'V'             => self::REC_CACHE_VERSION,
+        ]);
+        if ($cacheable && ($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
+            return (int)$cache + $this->hiddenRecommendationsCount($kidList, $request);
+        }
 
-		$where = "m.kingdom_id IN ($kidList) AND (recs.deleted_by IS NULL OR recs.deleted_by = 0)";
-		if (!empty($request['RecommendedBy'])) {
-			$rb = (int)$request['RecommendedBy'];
-			$where .= " AND recs.recommended_by_id = $rb";
-		}
-		$sql = "SELECT COUNT(*) AS n
+        // Must carry the same recipient-status predicate as PlayerAwardRecommendations and
+        // PlayerAwardRecommendationsPage, or the badge counts rows the Manager can never
+        // show and the counter can never be worked down to zero.
+        // Public recs only: hidden (Monarchy Only) recs are counted per viewer below,
+        // uncached, so the shared cache entry never depends on who warmed it.
+        $where = "m.kingdom_id IN ($kidList) AND (m.suspended IS NULL OR m.suspended = 0)"
+            . " AND (recs.deleted_by IS NULL OR recs.deleted_by = 0)"
+            . " AND recs.monarchy_only = 0";
+        if (!empty($request['RecommendedBy'])) {
+            $rb = (int)$request['RecommendedBy'];
+            $where .= " AND recs.recommended_by_id = $rb";
+        }
+        $sql = "SELECT COUNT(*) AS n
 				FROM " . DB_PREFIX . "recommendations recs
 				JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id
 				WHERE $where";
-		$r = $this->db->query($sql);
-		$n = 0;
-		if ($r !== false && $r->size() > 0 && $r->next()) {
-			$n = (int)$r->n;
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $n);
-	}
+        $this->db->Clear();
+        $r = $this->db->query($sql);
+        $n = 0;
+        if ($r !== false && $r->size() > 0 && $r->next()) {
+            $n = (int)$r->n;
+        }
+        if ($cacheable) {
+            $n = (int) Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $n);
+        }
+        return $n + $this->hiddenRecommendationsCount($kidList, $request);
+    }
 
-	public function DeletedAwardRecommendations($request) {
-		$key = Ork3::$Lib->ghettocache->key([
-			'KingdomId' => (int)($request['KingdomId'] ?? 0),
-			'ParkId'    => (int)($request['ParkId']    ?? 0),
-			'PlayerId'  => (int)($request['PlayerId']  ?? 0),
-			'Deleted'   => 1,
-		]);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false)
-			return $cache;
+    // The viewer-dependent half of the tab badge: Monarchy Only recs this TOKEN's
+    // viewer may see. Never cached (the predicate is per viewer); cheap because
+    // idx_recs_monarchy_only narrows to the few hidden rows. This runs on every
+    // kingdom profile load, so it first asks the index whether the scope has ANY live
+    // hidden rec, and only then resolves the viewer's officer grants.
+    private function hiddenRecommendationsCount(string $kidList, array $request): int
+    {
+        $vis    = Ork3::$Lib->recommendationvisibility;
+        $viewer = $vis->viewerFromToken($request['Token'] ?? '');
+        if ($viewer <= 0) {
+            return 0;
+        }
+        $base = "recs.monarchy_only <> 0 AND m.kingdom_id IN ($kidList) AND (m.suspended IS NULL OR m.suspended = 0)"
+            . " AND (recs.deleted_by IS NULL OR recs.deleted_by = 0)";
+        if (!empty($request['RecommendedBy'])) {
+            $base .= ' AND recs.recommended_by_id = ' . (int)$request['RecommendedBy'];
+        }
+        $this->db->Clear();
+        $any = $this->db->DataSet('SELECT 1 AS x FROM ' . DB_PREFIX . 'recommendations recs JOIN ' . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id WHERE $base LIMIT 1");
+        if (!$any || !$any->Next()) {
+            return 0;
+        }
+        $where = $base . ' AND ' . $vis->sqlPredicate($viewer, 'recs', 'm', array_map('intval', explode(',', $kidList)));
+        $this->db->Clear();
+        $r = $this->db->query('SELECT COUNT(*) AS n FROM ' . DB_PREFIX . 'recommendations recs JOIN ' . DB_PREFIX . "mundane m ON m.mundane_id = recs.mundane_id WHERE $where");
 
-		$location_clause = '';
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$location_clause = " AND m.kingdom_id IN (" . $kidList . ")";
-		}
-		if (valid_id($request['ParkId'])) {
-			$location_clause = " AND m.park_id = " . (int)$request['ParkId'];
-		}
-		if (valid_id($request['PlayerId'])) {
-			$location_clause = " AND recs.mundane_id = " . (int)$request['PlayerId'];
-		}
+        return ($r !== false && $r->size() > 0 && $r->next()) ? (int)$r->n : 0;
+    }
 
-		$sql = "select
+    /**
+     * Soft-deleted (dismissed) recommendations for a scope, most recently dismissed
+     * first. Dismissals are never purged, so this is PAGED: Limit defaults to 200 and
+     * Offset walks back through the history, mirroring PlayerAwardRecommendationsPage.
+     * The response carries NextOffset; a total is deliberately NOT computed. The only
+     * consumers reach this through Model_Reports::deleted_recommended_awards, which
+     * returns just the rows, and the Kingdom/Park AJAX panels derive hasMore from a
+     * short batch — a COUNT(*) here would be a full scan nothing can read.
+     *
+     * Not cached: Monarchy Only rows are filtered per TOKEN viewer in SQL, so no
+     * entry could be shared between viewers. The panel is officer-only and
+     * click-to-open, so the uncached read is cheap in practice.
+     */
+    public function DeletedAwardRecommendations($request)
+    {
+        $limit  = max(1, min(1000, (int)($request['Limit'] ?? 200)));
+        $offset = max(0, (int)($request['Offset'] ?? 0));
+        $vis    = Ork3::$Lib->recommendationvisibility;
+
+        // $scopeKids is the set of recipient kingdoms the query can return, resolved
+        // with the same last-match-wins precedence as $location_clause.
+        $location_clause = '';
+        $scopeKids = [];
+        if (valid_id($request['KingdomId'] ?? 0)) {
+            $scopeKids = Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']);
+            $kidList = implode(',', array_map('intval', $scopeKids));
+            $location_clause = " AND m.kingdom_id IN (" . $kidList . ")";
+        }
+        if (valid_id($request['ParkId'] ?? 0)) {
+            $scopeKids = [$vis->kingdomOfPark((int)$request['ParkId'])];
+            $location_clause = " AND m.park_id = " . (int)$request['ParkId'];
+        }
+        if (valid_id($request['PlayerId'] ?? 0)) {
+            $this->db->Clear();
+            $kr = $this->db->DataSet('SELECT kingdom_id FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . (int)$request['PlayerId']);
+            $scopeKids = ($kr && $kr->Next()) ? [(int)$kr->kingdom_id] : [];
+            $location_clause = " AND recs.mundane_id = " . (int)$request['PlayerId'];
+        }
+        $visClause = ' AND ' . $vis->sqlPredicate($vis->viewerFromToken($request['Token'] ?? ''), 'recs', 'm', $scopeKids);
+
+        $sql = "select
 			a.peerage, ifnull(ka.name, a.name) as award_name,
 			m.persona,
 			recs.date_recommended,
@@ -775,56 +1604,65 @@ class Report  extends Ork3 {
 			LEFT join " . DB_PREFIX . "mundane dm on dm.mundane_id = recs.deleted_by
 			LEFT join " . DB_PREFIX . "park p on p.park_id = m.park_id
 			LEFT join " . DB_PREFIX . "kingdom k on k.kingdom_id = m.kingdom_id
-			WHERE recs.deleted_at IS NOT NULL $location_clause
-			order by recs.deleted_at DESC";
-		$this->db->Clear();
-		$r = $this->db->query($sql);
-		$response = ['AwardRecommendations' => []];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$response['AwardRecommendations'][] = [
-					'RecommendationsId' => (int)$r->recommendations_id,
-					'MundaneId'         => (int)$r->mundane_id,
-					'Persona'           => $r->persona,
-					'DateRecommended'   => $r->date_recommended,
-					'Rank'              => (int)$r->rank,
-					'AwardName'         => $r->award_name,
-					'Reason'            => $r->reason,
-					'RecommendedByName' => $r->recommended_by_persona,
-					'RecommendedById'   => (int)$r->recommended_by_id,
-					'MaskGiver'         => (int)$r->mask_giver,
-					'KingdomAwardId'    => (int)$r->ka_kaward_id,
-					'AwardId'           => (int)($r->ka_award_id ?: $r->award_id),
-					'ParkId'            => (int)$r->park_id,
-					'KingdomId'         => (int)$r->kingdom_id,
-					'ParkName'          => $r->park_name,
-					'KingdomName'       => $r->kingdom_name,
-					'DeletedAt'         => $r->deleted_at,
-					'DeletedById'       => (int)$r->deleted_by,
-					'DeletedByName'     => $r->deleted_by_persona,
-				];
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = Success();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+			WHERE recs.deleted_at IS NOT NULL $location_clause $visClause
+			order by recs.deleted_at DESC
+			LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
+        $this->db->Clear();
+        $r = $this->db->query($sql);
+        $response = ['AwardRecommendations' => []];
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $response['AwardRecommendations'][] = [
+                    'RecommendationsId' => (int)$r->recommendations_id,
+                    'MundaneId'         => (int)$r->mundane_id,
+                    'Persona'           => $r->persona,
+                    'DateRecommended'   => $r->date_recommended,
+                    'Rank'              => (int)$r->rank,
+                    'AwardName'         => $r->award_name,
+                    'Reason'            => $r->reason,
+                    'RecommendedByName' => $r->recommended_by_persona,
+                    'RecommendedById'   => (int)$r->recommended_by_id,
+                    'MaskGiver'         => (int)$r->mask_giver,
+                    'KingdomAwardId'    => (int)$r->ka_kaward_id,
+                    'AwardId'           => (int)($r->ka_award_id ?: $r->award_id),
+                    'ParkId'            => (int)$r->park_id,
+                    'KingdomId'         => (int)$r->kingdom_id,
+                    'ParkName'          => $r->park_name,
+                    'KingdomName'       => $r->kingdom_name,
+                    'DeletedAt'         => $r->deleted_at,
+                    'DeletedById'       => (int)$r->deleted_by,
+                    'DeletedByName'     => $r->deleted_by_persona,
+                ];
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = Success();
+        }
+        $response['NextOffset'] = $offset + count($response['AwardRecommendations']);
+        return $response;
+    }
 
-	public function Guilds($request) {
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$where = "and k.kingdom_id IN ($kidList)";
-		}
-		if (valid_id($request['ParkId'])) $where = "and p.park_id = '$request[ParkId]'";
-		if (valid_id($request['MundaneId'])) $where = "and m.mundane_id = '$request[MundaneId]'";
+    public function Guilds($request)
+    {
+        if (valid_id($request['KingdomId'])) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $where = "and k.kingdom_id IN ($kidList)";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where = "and p.park_id = '$request[ParkId]'";
+        }
+        if (valid_id($request['MundaneId'])) {
+            $where = "and m.mundane_id = '$request[MundaneId]'";
+        }
 
-		if ($request['PerWeeks'] == 1)
-			$per_period = date("Y-m-d", strtotime("-$request[Periods] week"));
-		if ($request['PerMonths'] == 1)
-			$per_period = date("Y-m-d", strtotime("-$request[Periods] month"));
+        if ($request['PerWeeks'] == 1) {
+            $per_period = date("Y-m-d", strtotime("-$request[Periods] week"));
+        }
+        if ($request['PerMonths'] == 1) {
+            $per_period = date("Y-m-d", strtotime("-$request[Periods] month"));
+        }
 
-		$sql = "select c.class_id, c.name as class_name, count(a.attendance_id) as attendance_count, m.persona, m.mundane_id, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, p.park_id, p.name as park_name
+        $sql = "select c.class_id, c.name as class_name, count(a.attendance_id) as attendance_count, m.persona, m.mundane_id, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, p.park_id, p.name as park_name
 					from " . DB_PREFIX . "class c
 						left join " . DB_PREFIX . "attendance a on a.class_id = c.class_id
 							left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
@@ -835,113 +1673,134 @@ class Report  extends Ork3 {
 					group by a.mundane_id, a.class_id
 						having count(a.attendance_id) >= '" . mysql_real_escape_string($request['MinimumAttendanceRequirement']) . "'
 					order by m.kingdom_id, c.class_id, m.park_id, m.persona";
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Guilds'] = array();
-			while ($r->next()) {
-				$response['Guilds'][] = array(
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'ClassId' => $r->class_id,
-						'ClassName' => $r->class_name,
-						'AttendanceCount' => $r->attendance_count,
-						'ParkId' => $r->park_id,
-						'ParkName' => $r->park_name,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'KingdomName' => $r->kingdom_name
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Guilds'] = array();
+            while ($r->next()) {
+                $response['Guilds'][] = array(
+                        'MundaneId' => $r->mundane_id,
+                        'Persona' => $r->persona,
+                        'ClassId' => $r->class_id,
+                        'ClassName' => $r->class_name,
+                        'AttendanceCount' => $r->attendance_count,
+                        'ParkId' => $r->park_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'KingdomName' => $r->kingdom_name
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
 
-	public function UnitSummary($request) {
-		$cache_key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false)
-			return $cache;
-		$has_mundane = valid_id($request['MundaneId']);
-		if ($has_mundane) $mid = (int)$request['MundaneId'];
-		$kidList = valid_id($request['KingdomId'])
-			? implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])))
-			: '';
-		if (valid_id($request['KingdomId'])) $kingdom = " and m.kingdom_id IN ($kidList)";
-		if (valid_id($request['ParkId'])) $park = " and m.park_id = '$request[ParkId]'";
-		if (valid_id($request['EventId'])) $event = " and e.event_id = '$request[EventId]'";
-		if (valid_id($request['IncludeCompanies'])) $companies = " or u.type = 'Company' ";
-		if (valid_id($request['IncludeHouseHolds'])) $households = " or u.type = 'Household' ";
-		if (valid_id($request['IncludeEvents'])) $events = " or u.type = 'Event' ";
-		if (valid_id($request['ActiveOnly'])) $active_only = " and um.active = 'Active' ";
-		// Hide retired units from listings unless explicitly requested.
-		$unit_active = valid_id($request['IncludeRetired']) ? '' : " and u.active = 'Active' ";
-		if (valid_id($request['KingdomId'])) $activity_scope = " and a.kingdom_id IN ($kidList)";
-		elseif (valid_id($request['ParkId'])) $activity_scope = " and a.park_id = '$request[ParkId]'";
+    public function UnitSummary($request)
+    {
+        $cache_key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false) {
+            return $cache;
+        }
+        $has_mundane = valid_id($request['MundaneId']);
+        if ($has_mundane) {
+            $mid = (int)$request['MundaneId'];
+        }
+        $kidList = valid_id($request['KingdomId'])
+            ? implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])))
+            : '';
+        if (valid_id($request['KingdomId'])) {
+            $kingdom = " and m.kingdom_id IN ($kidList)";
+        }
+        if (valid_id($request['ParkId'])) {
+            $park = " and m.park_id = '$request[ParkId]'";
+        }
+        if (valid_id($request['EventId'])) {
+            $event = " and e.event_id = '$request[EventId]'";
+        }
+        if (valid_id($request['IncludeCompanies'])) {
+            $companies = " or u.type = 'Company' ";
+        }
+        if (valid_id($request['IncludeHouseHolds'])) {
+            $households = " or u.type = 'Household' ";
+        }
+        if (valid_id($request['IncludeEvents'])) {
+            $events = " or u.type = 'Event' ";
+        }
+        if (valid_id($request['ActiveOnly'])) {
+            $active_only = " and um.active = 'Active' ";
+        }
+        // Hide retired units from listings unless explicitly requested.
+        $unit_active = valid_id($request['IncludeRetired']) ? '' : " and u.active = 'Active' ";
+        if (valid_id($request['KingdomId'])) {
+            $activity_scope = " and a.kingdom_id IN ($kidList)";
+        } elseif (valid_id($request['ParkId'])) {
+            $activity_scope = " and a.park_id = '$request[ParkId]'";
+        }
 
-		$name_where = '';
-		if (!empty($request['Name'])) {
-			$safeName = str_replace(["'", '%', '_', '\\'], ["\'\'", '\\%', '\\_', '\\\\'], $request['Name']);
-			$name_where = " and u.name like '%{$safeName}%'";
-		}
-		$limit_clause = isset($request['Limit']) && is_numeric($request['Limit']) ? 'LIMIT ' . (int)$request['Limit'] : '';
-		$allowed_order = ['u.name', 'active_member_count DESC', 'total_member_count DESC'];
-		$order_by = (isset($request['OrderBy']) && in_array($request['OrderBy'], $allowed_order))
-			? $request['OrderBy'] : 'u.name';
+        $name_where = '';
+        if (!empty($request['Name'])) {
+            $safeName = str_replace(["'", '%', '_', '\\'], ["\'\'", '\\%', '\\_', '\\\\'], $request['Name']);
+            $name_where = " and u.name like '%{$safeName}%'";
+        }
+        $limit_clause = isset($request['Limit']) && is_numeric($request['Limit']) ? 'LIMIT ' . (int)$request['Limit'] : '';
+        $allowed_order = ['u.name', 'active_member_count DESC', 'total_member_count DESC'];
+        $order_by = (isset($request['OrderBy']) && in_array($request['OrderBy'], $allowed_order))
+            ? $request['OrderBy'] : 'u.name';
 
-		// When MundaneId is given (player profile path), fold the player + active
-		// filters into the ON clause so the planner enters via ix_um_mundane and
-		// only touches that player's unit_mundane rows. Without this, MariaDB
-		// full-scans ork_unit (~3.5k rows) before filtering.
-		if ($has_mundane) {
-			$um_join = "inner join " . DB_PREFIX . "unit_mundane um on u.unit_id = um.unit_id and um.mundane_id = '$mid'" . ($active_only ?? '');
-			$active_only_where = '';
-		} else {
-			$um_join = "left join " . DB_PREFIX . "unit_mundane um on u.unit_id = um.unit_id";
-			$active_only_where = $active_only ?? '';
-		}
+        // When MundaneId is given (player profile path), fold the player + active
+        // filters into the ON clause so the planner enters via ix_um_mundane and
+        // only touches that player's unit_mundane rows. Without this, MariaDB
+        // full-scans ork_unit (~3.5k rows) before filtering.
+        if ($has_mundane) {
+            $um_join = "inner join " . DB_PREFIX . "unit_mundane um on u.unit_id = um.unit_id and um.mundane_id = '$mid'" . ($active_only ?? '');
+            $active_only_where = '';
+        } else {
+            $um_join = "left join " . DB_PREFIX . "unit_mundane um on u.unit_id = um.unit_id";
+            $active_only_where = $active_only ?? '';
+        }
 
-		// Lightweight skips the four per-row attendance/unit_mundane correlated
-		// subqueries (TotalMemberCount, LastActivityDate, ActiveMemberCount,
-		// LeaderNames) for callers that only render Name/Type/UnitId/UnitMundaneId
-		// — Player profile + Admin player. The Unit List and Search pages still
-		// need the full projection.
-		$lightweight = !empty($request['Lightweight']);
-		if ($lightweight) {
-			$total_member_count_expr  = 'null';
-			$last_activity_date_expr  = 'null';
-			$active_member_count_expr = 'null';
-			$leader_names_expr        = 'null';
-		} else {
-			$total_member_count_expr  = "(select count(*) from " . DB_PREFIX . "unit_mundane um2 where um2.unit_id = u.unit_id)";
-			$last_activity_date_expr  = "(select max(a.date) from " . DB_PREFIX . "attendance a join " . DB_PREFIX . "unit_mundane um3 on um3.mundane_id = a.mundane_id where um3.unit_id = u.unit_id $activity_scope)";
-			$active_member_count_expr = "(select count(distinct um4.mundane_id) from " . DB_PREFIX . "unit_mundane um4 join " . DB_PREFIX . "attendance a4 on a4.mundane_id = um4.mundane_id where um4.unit_id = u.unit_id and a4.date >= date_sub(curdate(), interval 1 year))";
-			$leader_names_expr        = "(select group_concat(m5.persona order by m5.persona separator ', ') from " . DB_PREFIX . "unit_mundane um5 join " . DB_PREFIX . "mundane m5 on m5.mundane_id = um5.mundane_id where um5.unit_id = u.unit_id and um5.role in ('captain','lord') and um5.active = 'Active')";
-		}
+        // Lightweight skips the four per-row attendance/unit_mundane correlated
+        // subqueries (TotalMemberCount, LastActivityDate, ActiveMemberCount,
+        // LeaderNames) for callers that only render Name/Type/UnitId/UnitMundaneId
+        // — Player profile + Admin player. The Unit List and Search pages still
+        // need the full projection.
+        $lightweight = !empty($request['Lightweight']);
+        if ($lightweight) {
+            $total_member_count_expr  = 'null';
+            $last_activity_date_expr  = 'null';
+            $active_member_count_expr = 'null';
+            $leader_names_expr        = 'null';
+        } else {
+            $total_member_count_expr  = "(select count(*) from " . DB_PREFIX . "unit_mundane um2 where um2.unit_id = u.unit_id)";
+            $last_activity_date_expr  = "(select max(a.date) from " . DB_PREFIX . "attendance a join " . DB_PREFIX . "unit_mundane um3 on um3.mundane_id = a.mundane_id where um3.unit_id = u.unit_id $activity_scope)";
+            $active_member_count_expr = "(select count(distinct um4.mundane_id) from " . DB_PREFIX . "unit_mundane um4 join " . DB_PREFIX . "attendance a4 on a4.mundane_id = um4.mundane_id where um4.unit_id = u.unit_id and a4.date >= date_sub(curdate(), interval 1 year))";
+            $leader_names_expr        = "(select group_concat(m5.persona order by m5.persona separator ', ') from " . DB_PREFIX . "unit_mundane um5 join " . DB_PREFIX . "mundane m5 on m5.mundane_id = um5.mundane_id where um5.unit_id = u.unit_id and um5.role in ('captain','lord') and um5.active = 'Active')";
+        }
 
-		$top_by_size = !empty($request['TopBySize']);
-		if ($top_by_size) {
-			// Fast default list (no name filter): cheaply pick the top-N units by
-			// roster size for the scope, then attach only the inexpensive detail
-			// columns. The attendance subqueries (last_activity_date /
-			// active_member_count) are deliberately omitted here — they are what made
-			// the unscoped default take ~15s — so this path returns in ~180ms.
-			// Activity detail is computed only on the typed-search path below.
-			$inner_scope_join  = '';
-			$inner_scope_where = '';
-			if (valid_id($request['KingdomId'])) {
-				$inner_scope_join  = "join " . DB_PREFIX . "mundane m on m.mundane_id = um.mundane_id";
-				$inner_scope_where = " and m.kingdom_id IN ($kidList)";
-			} elseif (valid_id($request['ParkId'])) {
-				$inner_scope_join  = "join " . DB_PREFIX . "mundane m on m.mundane_id = um.mundane_id";
-				$inner_scope_where = " and m.park_id = '" . (int)$request['ParkId'] . "'";
-			}
-			$top_n = (isset($request['Limit']) && is_numeric($request['Limit'])) ? (int)$request['Limit'] : 100;
-			// Retired units are excluded unless explicitly requested.
-			$inner_unit_active = valid_id($request['IncludeRetired']) ? '' : " and u.active = 'Active'";
-			$sql = "select u.unit_id, u.type, u.name, u.has_heraldry, u.url, u.active as unit_active, top.sz as member_count,
+        $top_by_size = !empty($request['TopBySize']);
+        if ($top_by_size) {
+            // Fast default list (no name filter): cheaply pick the top-N units by
+            // roster size for the scope, then attach only the inexpensive detail
+            // columns. The attendance subqueries (last_activity_date /
+            // active_member_count) are deliberately omitted here — they are what made
+            // the unscoped default take ~15s — so this path returns in ~180ms.
+            // Activity detail is computed only on the typed-search path below.
+            $inner_scope_join  = '';
+            $inner_scope_where = '';
+            if (valid_id($request['KingdomId'])) {
+                $inner_scope_join  = "join " . DB_PREFIX . "mundane m on m.mundane_id = um.mundane_id";
+                $inner_scope_where = " and m.kingdom_id IN ($kidList)";
+            } elseif (valid_id($request['ParkId'])) {
+                $inner_scope_join  = "join " . DB_PREFIX . "mundane m on m.mundane_id = um.mundane_id";
+                $inner_scope_where = " and m.park_id = '" . (int)$request['ParkId'] . "'";
+            }
+            $top_n = (isset($request['Limit']) && is_numeric($request['Limit'])) ? (int)$request['Limit'] : 100;
+            // Retired units are excluded unless explicitly requested.
+            $inner_unit_active = valid_id($request['IncludeRetired']) ? '' : " and u.active = 'Active'";
+            $sql = "select u.unit_id, u.type, u.name, u.has_heraldry, u.url, u.active as unit_active, top.sz as member_count,
 						$total_member_count_expr as total_member_count,
 						null as last_activity_date,
 						null as active_member_count,
@@ -959,8 +1818,8 @@ class Report  extends Ork3 {
 					) top
 					join " . DB_PREFIX . "unit u on u.unit_id = top.unit_id
 					order by top.sz desc";
-		} else {
-			$sql = "select u.*, m.*, u.has_heraldry, u.active as unit_active, count(um.mundane_id) as member_count,
+        } else {
+            $sql = "select u.*, m.*, u.has_heraldry, u.active as unit_active, count(um.mundane_id) as member_count,
 					$total_member_count_expr as total_member_count,
 					$last_activity_date_expr as last_activity_date,
 					$active_member_count_expr as active_member_count,
@@ -973,78 +1832,103 @@ class Report  extends Ork3 {
 					where 1 and (1 $kingdom $park $event_id $active_only_where $name_where $unit_active) and (0 $companies $households $events)
 					group by u.unit_id
 				order by $order_by $limit_clause";
-		}
-		$r = $this->db->query($sql);
-		logtrace("Unit Summary", array($request, $sql));
-		$response = array( 'Status' => Success(), 'Units' => array());
-		if ($r === false) {
-			$response['Status'] = InvalidParameter();
-		} else if ($r->size() > 0) {
-			while ($r->next()) {
-				$response['Units'][] = array(
-					'UnitId'           => $r->unit_id,
-					'Type'             => $r->type,
-					'Name'             => $r->name,
-					'HasHeraldry'      => (int)$r->has_heraldry,
-					'Persona'          => $r->persona,
-					'MemberCount'       => $r->member_count,
-					'TotalMemberCount'  => $r->total_member_count,
-					'LastActivityDate'   => $r->last_activity_date,
-					'ActiveMemberCount'  => (int)$r->active_member_count,
-					'LeaderNames'        => $r->leader_names ?? '',
-					'Url'                => $r->url ?? '',
-					'UnitMundaneId'      => $r->unit_mundane_id,
-					'Active'             => $r->unit_active,
-				);
-			}
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
-	}
+        }
+        $r = $this->db->query($sql);
+        logtrace("Unit Summary", array($request, $sql));
+        $response = array( 'Status' => Success(), 'Units' => array());
+        if ($r === false) {
+            $response['Status'] = InvalidParameter();
+        } elseif ($r->size() > 0) {
+            while ($r->next()) {
+                $response['Units'][] = array(
+                    'UnitId'           => $r->unit_id,
+                    'Type'             => $r->type,
+                    'Name'             => $r->name,
+                    'HasHeraldry'      => (int)$r->has_heraldry,
+                    'Persona'          => $r->persona,
+                    'MemberCount'       => $r->member_count,
+                    'TotalMemberCount'  => $r->total_member_count,
+                    'LastActivityDate'   => $r->last_activity_date,
+                    'ActiveMemberCount'  => (int)$r->active_member_count,
+                    'LeaderNames'        => $r->leader_names ?? '',
+                    'Url'                => $r->url ?? '',
+                    'UnitMundaneId'      => $r->unit_mundane_id,
+                    'Active'             => $r->unit_active,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
+    }
 
-	public function AttendanceSummary($request) {
-		if (valid_id($request['EventId'])) $where = "where ssa.event_id = '" . mysql_real_escape_string($request['EventId']) . "'";
-		if (valid_id($request['KingdomId'])) $where = "where ssa.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
-		if (valid_id($request['ParkId'])) $where = "where ssa.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-    	if (valid_id($request['PrincipalityId'])) $where = "where ssa.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['PrincipalityId']))) . ")";
-		if ($request['NativePopulace'] && (valid_id($request['KingdomId']) || valid_id($request['ParkId']))) $where .= " and m.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		if ($request['Waivered']) $where = (strlen($where)>0)?" and m.waivered = 1":"where m.waivered = 1";
-		/*
-		if (strlen($where) == 0) {
-			$response['Status'] = InvalidParameter();
-			return $response;
-		}
-		*/
-		$report_to = (!empty($request['ReportFromDate']) && $request['ReportFromDate'] !== date('Y-m-d'))
-			? $request['ReportFromDate'] : date('Y-m-d');
-		if ($request['PerWeeks'] == 1)
-			$per_period = date("Y-m-d", strtotime("$report_to -$request[Periods] week"));
-		if ($request['PerMonths'] == 1)
-			$per_period = date("Y-m-d", strtotime("$report_to -$request[Periods] month"));
-		if (!isset($per_period))
-			$per_period = date("Y-m-d", strtotime("$report_to -$request[Periods] day"));
-		switch($request['ByPeriod']) {
-		    case 'week':
-	                $by_period = 'ssa.date_year, ssa.date_week3';
-	                $group_period = 'a.date_year, a.date_week3';
-	            break;
-		    case 'month':
-		            $by_period = 'ssa.date_year, ssa.date_month';
-	                $group_period = 'a.date_year, a.date_week3';
-		        break;
-		    case 'date':
-		    default:
-    		        $by_period = 'ssa.date';
-                    $group_period = 'a.date, a.event_calendardetail_id';
+    public function AttendanceSummary($request)
+    {
+        if (valid_id($request['EventId'])) {
+            $where = "where ssa.event_id = '" . mysql_real_escape_string($request['EventId']) . "'";
+        }
+        if (valid_id($request['KingdomId'])) {
+            $where = "where ssa.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where = "where ssa.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        }
+        if (valid_id($request['PrincipalityId'])) {
+            $where = "where ssa.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['PrincipalityId']))) . ")";
+        }
+        if ($request['NativePopulace'] && (valid_id($request['KingdomId']) || valid_id($request['ParkId']))) {
+            $where .= " and m.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        }
+        if ($request['Waivered']) {
+            $where = (strlen($where) > 0) ? " and m.waivered = 1" : "where m.waivered = 1";
+        }
+        /*
+        if (strlen($where) == 0) {
+            $response['Status'] = InvalidParameter();
+            return $response;
+        }
+        */
+        $report_to = (!empty($request['ReportFromDate']) && $request['ReportFromDate'] !== date('Y-m-d'))
+            ? $request['ReportFromDate'] : date('Y-m-d');
+        if ($request['PerWeeks'] == 1) {
+            $per_period = date("Y-m-d", strtotime("$report_to -$request[Periods] week"));
+        }
+        if ($request['PerMonths'] == 1) {
+            $per_period = date("Y-m-d", strtotime("$report_to -$request[Periods] month"));
+        }
+        if (!isset($per_period)) {
+            $per_period = date("Y-m-d", strtotime("$report_to -$request[Periods] day"));
+        }
+        switch ($request['ByPeriod']) {
+            case 'week':
+                $by_period = 'ssa.date_year, ssa.date_week3';
+                $group_period = 'a.date_year, a.date_week3';
+                break;
+            case 'month':
+                $by_period = 'ssa.date_year, ssa.date_month';
+                $group_period = 'a.date_year, a.date_week3';
+                break;
+            case 'date':
+            default:
+                $by_period = 'ssa.date';
+                $group_period = 'a.date, a.event_calendardetail_id';
                 break;
         }
 
 
-		$sql = "select max(a.date) as `date`, count(a.mundane_id) as attendees, count(DISTINCT a.mundane_id) as distinct_players, a.event_start, a.event_end, a.event_id, a.event_calendardetail_id, a.event_id, e.name as event_name,
+        // In-Person / Online split columns (Attendance::TypePredicate, the single source
+        // of the online predicate): the inner query flags whether each player had an in-person and/or an online
+        // sign-in in the group; the outer counts distinct players per flag. A player
+        // with both kinds in one period counts once in each split and once in the total.
+        $sql = "select max(a.date) as `date`, count(a.mundane_id) as attendees, count(DISTINCT a.mundane_id) as distinct_players,
+					count(DISTINCT case when a.had_in_person then a.mundane_id end) as distinct_in_person,
+					count(DISTINCT case when a.had_online then a.mundane_id end) as distinct_online,
+					count(DISTINCT case when a.had_online and not a.had_in_person then a.mundane_id end) as distinct_online_only,
+					a.event_start, a.event_end, a.event_id, a.event_calendardetail_id, a.event_id, e.name as event_name,
 					ifnull(a.park_id, ep.park_id) as park_id, ifnull(p.name, ep.name) as park_name, year(a.date) as year, week(a.date, 3) as week,
 					ifnull(k.kingdom_id, ek.kingdom_id) as kingdom_id, ifnull(k.name, ek.name) as kingdom_name, ifnull(k.parent_kingdom_id, ek.parent_kingdom_id) as parent_kingdom_id
 					from
 						(select max(ssa.date) as `date`, max(ssa.date_year) as date_year, max(ssa.date_month) as date_month, max(date_week3) as date_week3,
-              ssa.mundane_id, ssd.event_start, ssd.event_end, ssa.park_id, ssd.event_calendardetail_id, ssd.event_id
+              ssa.mundane_id, ssd.event_start, ssd.event_end, ssa.park_id, ssd.event_calendardetail_id, ssd.event_id,
+              max(" . Attendance::TypePredicate('in_person', 'ssa') . ") as had_in_person, max(" . Attendance::TypePredicate('online', 'ssa') . ") as had_online
 							from " . DB_PREFIX . "attendance ssa
 								left join " . DB_PREFIX . "event_calendardetail ssd on ssa.event_calendardetail_id = ssd.event_calendardetail_id
 								left join " . DB_PREFIX . "park p on ssa.park_id = p.park_id
@@ -1061,44 +1945,48 @@ class Report  extends Ork3 {
 					group by $group_period
 					order by a.date desc, kingdom_name asc, park_name asc, event_name asc";
 
-    $r = $this->db->query($sql);
-		if ($r !== false && $r->size() > 0) {
-			$response = array( 'Status' => Success(), 'Dates' => array());
-			while ($r->next()) {
-				$response['Dates'][] = array(
-						'Date' => $r->date,
-						'Year' => $r->year,
-						'Week' => $r->week,
-						'Attendees' => $r->attendees,
-						'DistinctPlayers' => $r->distinct_players,
-						'EventCalendarDetailId' => $r->event_calendardetail_id,
-						'EventId' => $r->event_id,
-						'ParkId' => $r->park_id,
-						'ParkName' => $r->park_name,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'KingdomName' => $r->kingdom_name,
-						'EventStart' => $r->event_start,
-						'EventEnd' => $r->event_end,
-						'EventName' => $r->event_name
-					);
-			}
-		} else {
-			$response['Status'] = InvalidParameter('A parameter was set incorrectly: ' . $sql . "\n" . print_r($request, true));
-		}
-		logtrace("Report->AttendanceSummary()", array($this->db->lastSql, $request));
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        if ($r !== false && $r->size() > 0) {
+            $response = array( 'Status' => Success(), 'Dates' => array());
+            while ($r->next()) {
+                $response['Dates'][] = array(
+                        'Date' => $r->date,
+                        'Year' => $r->year,
+                        'Week' => $r->week,
+                        'Attendees' => (int)$r->attendees,
+                        'DistinctPlayers' => (int)$r->distinct_players,
+                        'DistinctPlayersInPerson' => (int)$r->distinct_in_person,
+                        'DistinctPlayersOnline' => (int)$r->distinct_online,
+                        'DistinctPlayersOnlineOnly' => (int)$r->distinct_online_only,
+                        'EventCalendarDetailId' => $r->event_calendardetail_id,
+                        'EventId' => $r->event_id,
+                        'ParkId' => $r->park_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'KingdomName' => $r->kingdom_name,
+                        'EventStart' => $r->event_start,
+                        'EventEnd' => $r->event_end,
+                        'EventName' => $r->event_name
+                    );
+            }
+        } else {
+            $response['Status'] = InvalidParameter('A parameter was set incorrectly: ' . $sql . "\n" . print_r($request, true));
+        }
+        logtrace("Report->AttendanceSummary()", array($this->db->lastSql, $request));
+        return $response;
+    }
 
-	public function AttendanceForEvent($request) {
-		if (valid_id($request['UnitId'])) {
-			$unit_clause = 	"LEFT JOIN " . DB_PREFIX . "unit_mundane um on um.mundane_id = a.mundane_id
+    public function AttendanceForEvent($request)
+    {
+        if (valid_id($request['UnitId'])) {
+            $unit_clause = 	"LEFT JOIN " . DB_PREFIX . "unit_mundane um on um.mundane_id = a.mundane_id
 								LEFT JOIN " . DB_PREFIX . "unit u on u.unit_id = um.unit_id
 							";
-			$unit_phrase = "u.name as unit_name, ";
-		}
+            $unit_phrase = "u.name as unit_name, ";
+        }
 
-		$sql = "select a.*, k.name as kingdom_name, p.park_id, p.name as park_name, k.abbreviation as k_abbr, p.abbreviation as p_abbr, k.parent_kingdom_id, m.persona, $unit_phrase c.name as class_name
+        $sql = "select a.*, k.name as kingdom_name, p.park_id, p.name as park_name, k.abbreviation as k_abbr, p.abbreviation as p_abbr, k.parent_kingdom_id, m.persona, $unit_phrase c.name as class_name
 					from " . DB_PREFIX . "attendance a
 						LEFT JOIN " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id
 							LEFT JOIN " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
@@ -1107,58 +1995,70 @@ class Report  extends Ork3 {
 						$unit_clause
 					where a.event_id = '" . mysql_real_escape_string($request['EventId']) . "' and a.event_calendardetail_id = '" . mysql_real_escape_string($request['EventCalendarDetailId']) . "'
 				";
-		if (valid_id($request['KingdomId'])) $sql .= " and a.kingdom_id = '" . mysql_real_escape_string($request['KingdomId']) . "'";
-		if (valid_id($request['ParkId'])) $sql .= " and a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		if (valid_id($request['UnitId'])) $sql .= " and a.unit_id = '" . mysql_real_escape_string($request['UnitId']) . "'";
-		if (valid_id($request['MundandeId'])) $sql .= " and a.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'";
-		if (valid_id($request['ClassId'])) $sql .= " and a.class_id = '" . mysql_real_escape_string($request['ClassId']) . "'";
+        if (valid_id($request['KingdomId'])) {
+            $sql .= " and a.kingdom_id = '" . mysql_real_escape_string($request['KingdomId']) . "'";
+        }
+        if (valid_id($request['ParkId'])) {
+            $sql .= " and a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        }
+        if (valid_id($request['UnitId'])) {
+            $sql .= " and a.unit_id = '" . mysql_real_escape_string($request['UnitId']) . "'";
+        }
+        if (valid_id($request['MundandeId'])) {
+            $sql .= " and a.mundane_id = '" . mysql_real_escape_string($request['MundaneId']) . "'";
+        }
+        if (valid_id($request['ClassId'])) {
+            $sql .= " and a.class_id = '" . mysql_real_escape_string($request['ClassId']) . "'";
+        }
 
-		logtrace('AttendanceForEvent',array($request, $sql));
+        logtrace('AttendanceForEvent', array($request, $sql));
 
-		$r = $this->db->query($sql);
+        $r = $this->db->query($sql);
 
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Attendance'] = array();
-			while ($r->next()) {
-				$response['Attendance'][] = array(
-						'AttendanceId' => $r->attendance_id,
-						'EnteredAt' => $r->entered_at,
-						'EnteredById' => $r->by_whom_id,
-						'MundaneId' => $r->mundane_id,
-						'ClassId' => $r->class_id,
-						'Date' => $r->date,
-						'ParkId' => $r->park_id,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'EventId' => $r->event_id,
-						'EventCalendarDetailId' => $r->event_calendardetail_id,
-						'Credits' => $r->credits,
-						'KingdomName' => $r->kingdom_name,
-						'ParkName' => $r->park_name,
-						'KAbbr' => $r->k_abbr,
-						'PAbbr' => $r->p_abbr,
-						'UnitName' => $r->unit_name,
-						'Persona' => $r->persona,
-						'ClassName' => $r->class_name,
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Attendance'] = array();
+            while ($r->next()) {
+                $response['Attendance'][] = array(
+                        'AttendanceId' => $r->attendance_id,
+                        'EnteredAt' => $r->entered_at,
+                        'EnteredById' => $r->by_whom_id,
+                        'MundaneId' => $r->mundane_id,
+                        'ClassId' => $r->class_id,
+                        'Date' => $r->date,
+                        'ParkId' => $r->park_id,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'EventId' => $r->event_id,
+                        'EventCalendarDetailId' => $r->event_calendardetail_id,
+                        'Credits' => $r->credits,
+                        'KingdomName' => $r->kingdom_name,
+                        'ParkName' => $r->park_name,
+                        'KAbbr' => $r->k_abbr,
+                        'PAbbr' => $r->p_abbr,
+                        'UnitName' => $r->unit_name,
+                        'Persona' => $r->persona,
+                        'ClassName' => $r->class_name,
+                        'Online' => (int) $r->online,
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
 
-	public function AttendanceForDate($request) {
-		if (valid_id($request['UnitId'])) {
-			$unit_clause = 	"LEFT JOIN " . DB_PREFIX . "unit_mundane um on um.mundane_id = a.mundane_id
+    public function AttendanceForDate($request)
+    {
+        if (valid_id($request['UnitId'])) {
+            $unit_clause = 	"LEFT JOIN " . DB_PREFIX . "unit_mundane um on um.mundane_id = a.mundane_id
 								LEFT JOIN " . DB_PREFIX . "unit u on u.unit_id = um.unit_id
 							";
-			$unit_phrase = "u.name as unit_name, ";
-		}
+            $unit_phrase = "u.name as unit_name, ";
+        }
 
-		$sql = "select a.*, a.persona as attendance_persona,
+        $sql = "select a.*, a.persona as attendance_persona,
 					k.name as kingdom_name, k.parent_kingdom_id, mk.kingdom_id as from_kingdom_id, mk.name as from_kingdom_name, mk.parent_kingdom_id as from_parent_kingdom_id,
 					p.name as park_name, p.park_id as park_id, mp.name as from_park_name, mp.park_id as from_park_id,
 					m.persona, bwm.mundane_id as by_whom_id, bwm.persona as by_whom_persona,
@@ -1176,102 +2076,115 @@ class Report  extends Ork3 {
 						$unit_clause
 					where a.date = '" . mysql_real_escape_string($request['Date']) . "'
 				";
-		if (valid_id($request['KingdomId'])) $sql .= " and a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
-		if (valid_id($request['ParkId'])) $sql .= " and a.park_id = $request[ParkId]";
-		if (valid_id($request['UnitId'])) $sql .= " and a.unit_id = $request[UnitId]";
-		if (valid_id($request['MundandeId'])) $sql .= " and a.mundane_id = $request[MundaneId]";
-		if (valid_id($request['ClassId'])) $sql .= " and a.class_id = $request[ClassId]";
+        if (valid_id($request['KingdomId'])) {
+            $sql .= " and a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
+        }
+        if (valid_id($request['ParkId'])) {
+            $sql .= " and a.park_id = $request[ParkId]";
+        }
+        if (valid_id($request['UnitId'])) {
+            $sql .= " and a.unit_id = $request[UnitId]";
+        }
+        if (valid_id($request['MundandeId'])) {
+            $sql .= " and a.mundane_id = $request[MundaneId]";
+        }
+        if (valid_id($request['ClassId'])) {
+            $sql .= " and a.class_id = $request[ClassId]";
+        }
 
-		logtrace('AttendanceForDate',array($request, $sql));
+        logtrace('AttendanceForDate', array($request, $sql));
 
-		$sql .= " order by kingdom_name, park_name, m.persona";
+        $sql .= " order by kingdom_name, park_name, m.persona";
 
         $r = $this->db->query($sql);
 
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['Attendance'] = array();
-			while ($r->next()) {
-				$response['Attendance'][] = array(
-						'AttendanceId' => $r->attendance_id,
-						'MundaneId' => $r->mundane_id,
-						'ClassId' => $r->class_id,
-						'Date' => $r->date,
-						'ParkId' => $r->park_id,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'FromParkId' => $r->from_park_id,
-						'FromKingdomId' => $r->from_kingdom_id,
-						'FromParentKingdomId' => $r->from_parent_kingodm_id,
-						'EventId' => $r->event_id,
-						'EventCalendarDetailId' => $r->event_calendardetail_id,
-						'EventName' => $r->event_name,
-						'EventStart' => $r->event_start,
-						'EventEnd' => $r->event_end,
-						'Credits' => $r->credits,
-						'KingdomName' => $r->kingdom_name,
-						'ParkName' => $r->park_name,
-						'FromKingdomName' => $r->from_kingdom_name,
-						'FromParkName' => $r->from_park_name,
-						'UnitName' => $r->unit_name,
-						'EnteredBy' => $r->by_whom_persona,
-						'EnteredById' => $r->by_whom_id,
-						'EnteredAt' => $r->entered_at,
-						'Persona' => $r->persona,
-						'ClassName' => $r->class_name,
-        				'AttendancePersona' => $r->attendance_persona,
-            			'Note' => $r->note,
-            			'Flavor' => $r->class_id==6?$r->flavor:'',
-					);
-			}
-			$response['Status'] = Success($sql);
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['Attendance'] = array();
+            while ($r->next()) {
+                $response['Attendance'][] = array(
+                        'AttendanceId' => $r->attendance_id,
+                        'MundaneId' => $r->mundane_id,
+                        'ClassId' => $r->class_id,
+                        'Date' => $r->date,
+                        'ParkId' => $r->park_id,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'FromParkId' => $r->from_park_id,
+                        'FromKingdomId' => $r->from_kingdom_id,
+                        'FromParentKingdomId' => $r->from_parent_kingodm_id,
+                        'EventId' => $r->event_id,
+                        'EventCalendarDetailId' => $r->event_calendardetail_id,
+                        'EventName' => $r->event_name,
+                        'EventStart' => $r->event_start,
+                        'EventEnd' => $r->event_end,
+                        'Credits' => $r->credits,
+                        'KingdomName' => $r->kingdom_name,
+                        'ParkName' => $r->park_name,
+                        'FromKingdomName' => $r->from_kingdom_name,
+                        'FromParkName' => $r->from_park_name,
+                        'UnitName' => $r->unit_name,
+                        'EnteredBy' => $r->by_whom_persona,
+                        'EnteredById' => $r->by_whom_id,
+                        'EnteredAt' => $r->entered_at,
+                        'Persona' => $r->persona,
+                        'ClassName' => $r->class_name,
+                        'AttendancePersona' => $r->attendance_persona,
+                        'Note' => $r->note,
+                        'Flavor' => $r->class_id == 6 ? $r->flavor : '',
+                        'Online' => (int) $r->online,
+                    );
+            }
+            $response['Status'] = Success($sql);
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
 
-	public function GeneralLedger($request) {
+    public function GeneralLedger($request)
+    {
 
-	}
+    }
 
-	public function GetAuthorizations($request) {
+    public function GetAuthorizations($request)
+    {
         logtrace("GetAuthorizations", $request);
-		$restrict_clause = array();
-		switch ($request['Type']) {
-			case AUTH_PARK:
-				$restrict_clause[] = "a.park_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				$order_by[] = "p.name";
-				break;
-			case AUTH_KINGDOM:
-				$restrict_clause[] = "a.kingdom_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				$order_by[] = "k.name";
-				break;
-			case AUTH_EVENT:
-				$restrict_clause[] = "a.event_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				$order_by[] = "e.name";
-				break;
-			case AUTH_UNIT:
-				$restrict_clause[] = "a.unit_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				$order_by[] = "u.name";
-				break;
-			default:
-				$order_by[] = "k.name, p.name, u.name, e.name";
+        $restrict_clause = array();
+        switch ($request['Type']) {
+            case AUTH_PARK:
+                $restrict_clause[] = "a.park_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                $order_by[] = "p.name";
+                break;
+            case AUTH_KINGDOM:
+                $restrict_clause[] = "a.kingdom_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                $order_by[] = "k.name";
+                break;
+            case AUTH_EVENT:
+                $restrict_clause[] = "a.event_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                $order_by[] = "e.name";
+                break;
+            case AUTH_UNIT:
+                $restrict_clause[] = "a.unit_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                $order_by[] = "u.name";
+                break;
+            default:
+                $order_by[] = "k.name, p.name, u.name, e.name";
                 $request['Type'] = AUTH_ADMIN;
                 break;
-		}
-		switch ($request['Officers']) {
-			case 'Officers':
-				$restrict_clause[] = "o.officer_id is not null";
-				break;
-			case 'NonOfficers':
-				$restrict_clause[] = "o.officer_id is null";
-				break;
-			case 'Both':
-				$order_by[] = "o.role";
-				break;
-		}
-		$sql = "select a.*, p.name as park_name, k.name as kingdom_name, k.parent_kingdom_id, e.name as event_name, u.name as unit_name, m.username, m.given_name, m.surname, m.persona, m.restricted, o.role as officer_role, o.officer_id
+        }
+        switch ($request['Officers']) {
+            case 'Officers':
+                $restrict_clause[] = "o.officer_id is not null";
+                break;
+            case 'NonOfficers':
+                $restrict_clause[] = "o.officer_id is null";
+                break;
+            case 'Both':
+                $order_by[] = "o.role";
+                break;
+        }
+        $sql = "select a.*, p.name as park_name, k.name as kingdom_name, k.parent_kingdom_id, e.name as event_name, u.name as unit_name, m.username, m.given_name, m.surname, m.persona, m.restricted, o.role as officer_role, o.officer_id
 					from ".DB_PREFIX."authorization a
 						left join ".DB_PREFIX."officer o on o.authorization_id = a.authorization_id
 						left join ".DB_PREFIX."mundane m on a.mundane_id = m.mundane_id
@@ -1279,111 +2192,126 @@ class Report  extends Ork3 {
 						left join ".DB_PREFIX."kingdom k on a.kingdom_id = k.kingdom_id
 						left join ".DB_PREFIX."event e on a.event_id = e.event_id
 						left join ".DB_PREFIX."unit u on a.unit_id = u.unit_id
-					".(count($restrict_clause)>0?"where":"")." ".implode(' AND ', $restrict_clause)."
-					order by ".implode(',',$order_by);
+					".(count($restrict_clause) > 0 ? "where" : "")." ".implode(' AND ', $restrict_clause)."
+					order by ".implode(',', $order_by);
 
-		logtrace('GetAuthorizations()', $sql);
-		$r = $this->db->query($sql);
+        logtrace('GetAuthorizations()', $sql);
+        $r = $this->db->query($sql);
 
-		if (strlen($request['Token']) > 0
-				&& ($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, $request['Type'], $request['Id'], AUTH_EDIT)) {
-			$restricted_access = true;
-		} else {
-			$restricted_access = false;
-		}
+        if (strlen($request['Token']) > 0
+                && ($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+                && Ork3::$Lib->authorization->HasAuthority($mundane_id, $request['Type'], $request['Id'], AUTH_EDIT)) {
+            $restricted_access = true;
+        } else {
+            $restricted_access = false;
+        }
 
-    	logtrace('GetAuthorizations()', $restricted_access);
+        logtrace('GetAuthorizations()', $restricted_access);
 
-		if ($r !== false) {
-			$response['Status'] = Success();
-			$response['Authorizations'] = array();
-			if ($r->size() > 0) {
-				while ($r->next()) {
-					$response['Authorizations'][] = array(
-								'AuthorizationId' => $r->authorization_id,
-								'MundaneId' => $r->mundane_id,
-								'ParkId' => $r->park_id,
-								'KingdomId' => $r->kingdom_id,
-								'EventId' => $r->event_id,
-								'UnitId' => $r->unit_id,
-								'Role' => $r->role,
-								'ParkName' => $r->park_name,
-								'KingdomName' => $r->kingdom_name,
-								'ParentKingdomId' => $r->parent_kingodm_id,
-								'EventName' => $r->event_name,
-								'UnitName' => $r->unit_name,
-								'Restricted' => $r->restricted,
-								'UserName' => $r->username,
-								'GivenName' => ($restricted_access&&$r->restricted==0)?$r->given_name:"",
-								'Surname' => ($restricted_access&&$r->restricted==0)?$r->surname:"",
-								'Persona' => $r->persona,
-								'OfficerId' => $r->officer_id,
-								'OfficerRole' => $r->officer_role
-							);
-				}
-			}
-		} else {
-			$response['Status'] = InvalidParameter('Problem processing request.');
-		}
+        if ($r !== false) {
+            $response['Status'] = Success();
+            $response['Authorizations'] = array();
+            if ($r->size() > 0) {
+                while ($r->next()) {
+                    $response['Authorizations'][] = array(
+                                'AuthorizationId' => $r->authorization_id,
+                                'MundaneId' => $r->mundane_id,
+                                'ParkId' => $r->park_id,
+                                'KingdomId' => $r->kingdom_id,
+                                'EventId' => $r->event_id,
+                                'UnitId' => $r->unit_id,
+                                'Role' => $r->role,
+                                'ParkName' => $r->park_name,
+                                'KingdomName' => $r->kingdom_name,
+                                'ParentKingdomId' => $r->parent_kingodm_id,
+                                'EventName' => $r->event_name,
+                                'UnitName' => $r->unit_name,
+                                'Restricted' => $r->restricted,
+                                'UserName' => $r->username,
+                                'GivenName' => ($restricted_access && $r->restricted == 0) ? $r->given_name : "",
+                                'Surname' => ($restricted_access && $r->restricted == 0) ? $r->surname : "",
+                                'Persona' => $r->persona,
+                                'OfficerId' => $r->officer_id,
+                                'OfficerRole' => $r->officer_role
+                            );
+                }
+            }
+        } else {
+            $response['Status'] = InvalidParameter('Problem processing request.');
+        }
 
-		return $response;
+        return $response;
 
-	}
+    }
 
-	public function GetPlayerRoster($request) {
-		$select_list = array();
-		$order_by = "k.name, p.name";
-		$restrict_clause = array();
-		if (true == $request['Suspended']) {
-			/* Borrowed from Player class to clear the suspensions past their suspended_until date before running the report */
-			$sql = "update " . DB_PREFIX . "mundane set suspended = 0, suspended_by_id = null, suspended_at = null, suspended_until = null, suspension = null, suspension_propagates = 1 where suspended_until < curdate() and suspended_until is not null and suspended_until != '0000-00-00'";
-			$this->db->query($sql);
-		}
-		switch ($request['Type']) {
-			case AUTH_PARK:
-				    $kdid  = Ork3::$Lib->park->GetParkKingdomId($request['Id']);
-				$restrict_clause[] = "m.park_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				    if (!empty($kdid)) {
-					  $restrict_clause[] = "m.kingdom_id = '" . mysql_real_escape_string($kdid) . "'";
-					    $dues_restrict_clause = "and (a.kingdom_id = '" . mysql_real_escape_string($kdid) . "' AND a.park_id = '" . mysql_real_escape_string($request['Id']) . "')";
-				    } else {
-					    $dues_restrict_clause = "and (a.kingdom_id = '" . mysql_real_escape_string($request['Id']) . "' OR a.park_id = '" . mysql_real_escape_string($request['Id']) . "')";
-				    }
-				$order_by = "p.name";
-				break;
-			case AUTH_KINGDOM:
-				$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['Id'])));
-				$restrict_clause[] = "k.kingdom_id IN ($kidList)";
-				$dues_restrict_clause = "and (a.kingdom_id IN ($kidList) or a.park_id = '" . mysql_real_escape_string($request['Id']) . "')";
-				$order_by = "k.name, p.name";
-				break;
-			case AUTH_EVENT:
-				$join_clause = 'left join ' . DB_PREFIX . "unit_mundane um on m.mundane_id = um.mundane_id and um.unit_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				$select_list = array ('um.role', 'um.title', 'um.active');
-				$order_by = "um.unit_id";
-				$restrict_clause[] = "e.event_id = '" . mysql_real_escape_string($request['Id']) . "'";
-				break;
-			case AUTH_UNIT:
-				$join_clause = 'left join ' . DB_PREFIX . "unit_mundane um on m.mundane_id = um.mundane_id";
-				$select_list = array ('um.role', 'um.title', 'um.active', 'um.role as unit_role', 'um.title as unit_title', 'um.unit_mundane_id');
-				$order_by = "um.unit_id";
-				$restrict_clause[] = " um.unit_id = '" . mysql_real_escape_string($request['Id']) . "' and " . (valid_id($request['IncludeRetiredUnitMembers'])?"":"um.active = 'Active'");
-				break;
-		}
-		$select_list = array_merge($select_list,
-			array(
-				'm.mundane_id','m.persona','m.park_id','m.kingdom_id','m.restricted','m.waivered','m.given_name', 'm.surname', 'm.other_name',
-				'm.suspended', 'm.suspended_at', 'm.suspended_until', 'm.suspension', 'm.suspension_propagates', 'suspended_by.persona suspendator', 'suspended_by.mundane_id suspended_by_id',
-				'p.name as park_name','k.name as kingdom_name','m.penalty_box'));
-			if (true == $request['Active']) $restrict_clause[] = ' m.active = 1 ';
-			if (true == $request['InActive']) $restrict_clause[] = ' m.active = 0 ';
-			if (true == $request['Waivered']) $restrict_clause[] = ' m.waivered = 1';
-			if (true == $request['UnWaivered']) $restrict_clause[] = ' m.waivered = 0';
-			if (true == $request['Banned']) $restrict_clause[] = ' m.penalty_box = 1';
-			if (true == $request['Suspended']) $restrict_clause[] = ' m.suspended = 1';
-			if (true == $request['DuesPaid'] && (AUTH_PARK == $request['Type'] || AUTH_KINGDOM == $request['Type'])) {
-				$duespaid_clause = 'INNER JOIN
+    public function GetPlayerRoster($request)
+    {
+        $select_list = array();
+        $order_by = "k.name, p.name";
+        $restrict_clause = array();
+        if (true == $request['Suspended']) {
+            /* Borrowed from Player class to clear the suspensions past their suspended_until date before running the report */
+            $sql = "update " . DB_PREFIX . "mundane set suspended = 0, suspended_by_id = null, suspended_at = null, suspended_until = null, suspension = null, suspension_propagates = 1 where suspended_until < curdate() and suspended_until is not null and suspended_until != '0000-00-00'";
+            $this->db->query($sql);
+        }
+        switch ($request['Type']) {
+            case AUTH_PARK:
+                $kdid  = Ork3::$Lib->park->GetParkKingdomId($request['Id']);
+                $restrict_clause[] = "m.park_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                if (!empty($kdid)) {
+                    $restrict_clause[] = "m.kingdom_id = '" . mysql_real_escape_string($kdid) . "'";
+                    $dues_restrict_clause = "and (a.kingdom_id = '" . mysql_real_escape_string($kdid) . "' AND a.park_id = '" . mysql_real_escape_string($request['Id']) . "')";
+                } else {
+                    $dues_restrict_clause = "and (a.kingdom_id = '" . mysql_real_escape_string($request['Id']) . "' OR a.park_id = '" . mysql_real_escape_string($request['Id']) . "')";
+                }
+                $order_by = "p.name";
+                break;
+            case AUTH_KINGDOM:
+                $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['Id'])));
+                $restrict_clause[] = "k.kingdom_id IN ($kidList)";
+                $dues_restrict_clause = "and (a.kingdom_id IN ($kidList) or a.park_id = '" . mysql_real_escape_string($request['Id']) . "')";
+                $order_by = "k.name, p.name";
+                break;
+            case AUTH_EVENT:
+                $join_clause = 'left join ' . DB_PREFIX . "unit_mundane um on m.mundane_id = um.mundane_id and um.unit_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                $select_list = array('um.role', 'um.title', 'um.active');
+                $order_by = "um.unit_id";
+                $restrict_clause[] = "e.event_id = '" . mysql_real_escape_string($request['Id']) . "'";
+                break;
+            case AUTH_UNIT:
+                $join_clause = 'left join ' . DB_PREFIX . "unit_mundane um on m.mundane_id = um.mundane_id";
+                $select_list = array('um.role', 'um.title', 'um.active', 'um.role as unit_role', 'um.title as unit_title', 'um.unit_mundane_id');
+                $order_by = "um.unit_id";
+                $restrict_clause[] = " um.unit_id = '" . mysql_real_escape_string($request['Id']) . "' and " . (valid_id($request['IncludeRetiredUnitMembers']) ? "" : "um.active = 'Active'");
+                break;
+        }
+        $select_list = array_merge(
+            $select_list,
+            array(
+                'm.mundane_id','m.persona','m.park_id','m.kingdom_id','m.restricted','m.waivered','m.given_name', 'm.surname', 'm.other_name',
+                'm.suspended', 'm.suspended_at', 'm.suspended_until', 'm.suspension', 'm.suspension_propagates', 'suspended_by.persona suspendator', 'suspended_by.mundane_id suspended_by_id',
+                'p.name as park_name','k.name as kingdom_name','m.penalty_box')
+        );
+        if (true == $request['Active']) {
+            $restrict_clause[] = ' m.active = 1 ';
+        }
+        if (true == $request['InActive']) {
+            $restrict_clause[] = ' m.active = 0 ';
+        }
+        if (true == $request['Waivered']) {
+            $restrict_clause[] = ' m.waivered = 1';
+        }
+        if (true == $request['UnWaivered']) {
+            $restrict_clause[] = ' m.waivered = 0';
+        }
+        if (true == $request['Banned']) {
+            $restrict_clause[] = ' m.penalty_box = 1';
+        }
+        if (true == $request['Suspended']) {
+            $restrict_clause[] = ' m.suspended = 1';
+        }
+        if (true == $request['DuesPaid'] && (AUTH_PARK == $request['Type'] || AUTH_KINGDOM == $request['Type'])) {
+            $duespaid_clause = 'INNER JOIN
 									(select dues_through, case split_id when null then 0 else 1 end as split_id, src_mundane_id
 										from ' . DB_PREFIX . 'split s
 										INNER join ' . DB_PREFIX . 'account a on s.account_id = a.account_id
@@ -1391,105 +2319,184 @@ class Report  extends Ork3 {
 											and s.is_dues = 1
 										where s.dues_through > curdate())
 									dues on m.mundane_id = dues.src_mundane_id';
-			$select_list[] = 'split_id as duespaid';
-			$select_list[] = 'dues_through as duesthrough';
-			$order_by = 'duespaid desc,'.$order_by;
-		}
-		$select_list[] = 'k.parent_kingdom_id';
-		$select_list[] = 'MAX(att.date) as last_sign_in';
-		$select_list = array_merge($select_list, array());
-		if (strlen($request['Token']) > 0
-				&& ($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-				&& Ork3::$Lib->authorization->HasAuthority($mundane_id, $request['Type'], $request['Id'], AUTH_EDIT)) {
-			$restricted_access = true;
-		} else {
-			$restricted_access = false;
-		}
-		$sql = 'SELECT ' . implode(',',$select_list) . "
+            $select_list[] = 'split_id as duespaid';
+            $select_list[] = 'dues_through as duesthrough';
+            $order_by = 'duespaid desc,'.$order_by;
+        }
+        $select_list[] = 'k.parent_kingdom_id';
+        // Scalar subquery, NOT a join+MAX. Joining ork_attendance here multiplied
+        // every player by their attendance rows (~20 each) only for GROUP BY to
+        // collapse them straight back down: the largest kingdom built a 320k-row
+        // temporary table to produce 15,829 answers. The subquery instead reads
+        // idx_sor_mundane_date (mundane_id, date) once per player.
+        //
+        // Verified identical -- same row count, ids and last_sign_in -- for all 29
+        // kingdoms with players, and for the Park, Unit and DuesPaid variants.
+        //
+        // The gain is concentrated, NOT across the board. Warm, per kingdom:
+        //   kingdom 10 (15,829 players)  976ms -> 414ms
+        //   kingdom 21 (15,128 players)  685ms -> 359ms
+        //   everything smaller           within noise, a few 5-10% SLOWER
+        // Below roughly 200k intermediate rows the old join was already cheap and
+        // N index probes cost slightly more. It was kept because the tail matters
+        // more than the median here: over 8 alternating runs of kingdom 10 the old
+        // query ran 966-2263ms (the temp table spilling under memory pressure)
+        // while this one held 418-428ms. Predictable beats occasionally-fast.
+        //
+        // GROUP BY stays -- see the note at the query below.
+        $select_list[] = '(select MAX(a2.date) from ' . DB_PREFIX . 'attendance a2 where a2.mundane_id = m.mundane_id) as last_sign_in';
+        $select_list = array_merge($select_list, array());
+        if (strlen($request['Token']) > 0
+                && ($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+                && Ork3::$Lib->authorization->HasAuthority($mundane_id, $request['Type'], $request['Id'], AUTH_EDIT)) {
+            $restricted_access = true;
+        } else {
+            $restricted_access = false;
+        }
+        $sql = 'SELECT ' . implode(',', $select_list) . "
 					FROM " . DB_PREFIX . "mundane m
 						LEFT JOIN " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
 						LEFT JOIN " . DB_PREFIX . "park p on m.park_id = p.park_id
 						left join " . DB_PREFIX . "mundane suspended_by on m.suspended_by_id = suspended_by.mundane_id
-						left join " . DB_PREFIX . "attendance att on att.mundane_id = m.mundane_id
 						$duespaid_clause
 						$join_clause
-					".(count($restrict_clause)?"where":"")."
+					".(count($restrict_clause) ? "where" : "")."
 						".implode(' and ', $restrict_clause)."
+					/* GROUP BY is load-bearing beyond the (now removed) attendance join:
+					   the dues clause INNER JOINs a per-split subquery, so a player with two
+					   qualifying dues splits returns two rows, and the AUTH_UNIT/AUTH_EVENT
+					   join clause can duplicate a player with several unit_mundane rows.
+					   Dropping it benchmarked no faster and would reintroduce those dupes.
+					   Block comments, not -- : these are inside a double-quoted PHP string
+					   that is logged and reformatted, and a collapsed newline would comment
+					   out the rest of the statement. For the same reason the PHP variable
+					   names are spelled out in prose -- writing them would interpolate. */
 					GROUP BY m.mundane_id
-					ORDER BY $order_by, m.persona, m.surname, m.given_name
+					/* m.mundane_id is a final tie-breaker, not decoration. The five preceding
+					   keys tie for genuinely duplicated entries (two players sharing a persona
+					   at one park, blank personas, doubled-up records), leaving their relative
+					   order up to the plan -- so changing the plan silently reshuffled them in
+					   8 of 29 kingdoms. Same rows either way, but this pins the order. */
+					ORDER BY $order_by, m.persona, m.surname, m.given_name, m.mundane_id
 		";
-		logtrace('GetPlayerRoster()', array($sql, $restrict_clause));
-		$r = $this->db->query($sql);
+        logtrace('GetPlayerRoster()', array($sql, $restrict_clause));
+        $r = $this->db->query($sql);
 
-		if ($r !== false) {
-			$response['Status'] = Success();
-			$response['Roster'] = array();
-			if ($r->size() > 0) {
-				while ($r->next()) {
-					$response['Roster'][] = array(
-								'MundaneId' => $r->mundane_id,
-								'GivenName' => $restricted_access&&$r->restricted==0?$r->given_name:"",
-								'Surname' => $restricted_access&&$r->restricted==0?$r->surname:"",
-								'OtherName' => $restricted_access&&$r->restricted==0?$r->other_name:"",
-								'Persona' => $r->persona,
-								'Suspended' => $r->suspended,
-								'SuspendedAt' => $r->suspended_at,
-								'SuspendedUntil' => $r->suspended_until,
-								'Suspendator' => $r->suspendator,
-								'SuspendatorId' => $r->suspended_by_id,
-								'Suspension' => $r->suspension,
-							'SuspensionPropagates' => $r->suspension_propagates,
-								'ParkId' => $r->park_id,
-								'KingdomId' => $r->kingdom_id,
-								'ParentKingdomId' => $r->parent_kingdom_id,
-								'ParkName' => $r->park_name,
-								'KingdomName' => $r->kingdom_name,
-								'Restricted' => $r->restricted,
-								'Waivered' => $r->waivered,
-								'DuesPaid' => $r->duespaid,
-								'DuesThrough' => $r->duesthrough,
-								'UnitMundaneId' => $r->unit_mundane_id,
-								'UnitRole' => $r->unit_role,
-								'UnitTitle' => $r->unit_title,
-								'PenaltyBox' => $r->penalty_box,
-								'LastSignIn' => $r->last_sign_in,
-								'Displayable' => $restricted_access||$r->restricted==0
-							);
-				}
-			}
-		} else {
-			$response['Status'] = InvalidParameter('Problem with request.');
-		}
+        if ($r !== false) {
+            $response['Status'] = Success();
+            $response['Roster'] = array();
+            if ($r->size() > 0) {
+                while ($r->next()) {
+                    $response['Roster'][] = array(
+                                'MundaneId' => $r->mundane_id,
+                                'GivenName' => $restricted_access && $r->restricted == 0 ? $r->given_name : "",
+                                'Surname' => $restricted_access && $r->restricted == 0 ? $r->surname : "",
+                                'OtherName' => $restricted_access && $r->restricted == 0 ? $r->other_name : "",
+                                'Persona' => $r->persona,
+                                'Suspended' => $r->suspended,
+                                'SuspendedAt' => $r->suspended_at,
+                                'SuspendedUntil' => $r->suspended_until,
+                                'Suspendator' => $r->suspendator,
+                                'SuspendatorId' => $r->suspended_by_id,
+                                'Suspension' => $r->suspension,
+                            'SuspensionPropagates' => $r->suspension_propagates,
+                                'ParkId' => $r->park_id,
+                                'KingdomId' => $r->kingdom_id,
+                                'ParentKingdomId' => $r->parent_kingdom_id,
+                                'ParkName' => $r->park_name,
+                                'KingdomName' => $r->kingdom_name,
+                                'Restricted' => $r->restricted,
+                                'Waivered' => $r->waivered,
+                                'DuesPaid' => $r->duespaid,
+                                'DuesThrough' => $r->duesthrough,
+                                'UnitMundaneId' => $r->unit_mundane_id,
+                                'UnitRole' => $r->unit_role,
+                                'UnitTitle' => $r->unit_title,
+                                'PenaltyBox' => $r->penalty_box,
+                                'LastSignIn' => $r->last_sign_in,
+                                'Displayable' => $restricted_access || $r->restricted == 0
+                            );
+                }
+            }
+        } else {
+            $response['Status'] = InvalidParameter('Problem with request.');
+        }
 
-		return $response;
-	}
+        return $response;
+    }
 
-	public function GetKingdomParkAverages($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false)
-			return $cache;
+    public function bustKingdomParkAverageCaches(int $kingdomId): void
+    {
+        if ($kingdomId <= 0) {
+            return;
+        }
+        $cache = Ork3::$Lib->ghettocache;
+        // All uses the pre-change keys; In-Person / Online carry AttendanceType.
+        foreach (['all', 'in_person', 'online'] as $type) {
+            $typeKey = $type === 'all' ? [] : ['AttendanceType' => $type];
+            $bustKey = $cache->key(['KingdomId' => $kingdomId] + $typeKey);
+            $cache->bust(__CLASS__ . '.GetKingdomParkAverages', $bustKey);
+            $cache->bust(__CLASS__ . '.GetKingdomParkMonthlyAverages', $bustKey);
+            foreach ([0, 1] as $isAdmin) {
+                $cache->bust(
+                    __CLASS__ . '.GetKingdomExtendedParkAverages',
+                    $cache->key(['KingdomId' => $kingdomId, 'IsAdmin' => $isAdmin] + $typeKey)
+                );
+            }
+        }
+    }
 
-		if (strlen($request['ReportFromDate']) == 0) $request['ReportFromDate'] = 'curdate()';
-		if (strlen($request['AverageWeeks']) == 0 && strlen($request['AverageMonths']) == 0) $request['AverageWeeks'] = 26;
-		if (strlen($request['KingdomId']) == 0) $request['KingdomId'] = '0';
-		if ($request['NativePopulace']) $native_populace .= "m.park_id = a.park_id and";
-		if ($request['Waivered']) $waivered_peeps = "m.waivered = 1 and";
+    public function bustPlayerStatusReconciliationCaches(int $parkId, int $kingdomId): void
+    {
+        $cache = Ork3::$Lib->ghettocache;
+        if ($parkId > 0) {
+            $cache->bust(__CLASS__ . '.GetPlayerStatusReconciliation', $cache->key(['ParkId' => $parkId]));
+        }
+        if ($kingdomId > 0) {
+            $cache->bust(__CLASS__ . '.GetPlayerStatusReconciliation', $cache->key(['KingdomId' => $kingdomId]));
+        }
+    }
 
-		if (strlen($request['AverageWeeks']) > 0) {
-			$per_period = date("Y-m-d", strtotime("-$request[AverageWeeks] week"));
-		} else {
-			$per_period = date("Y-m-d", strtotime("-$request[AverageMonths] month"));
-		}
+    public function GetKingdomParkAverages($request)
+    {
+        // Informational In-Person / Online / All split; never tied to park status.
+        $type = $this->_takeAttendanceType($request);
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false) {
+            return $cache;
+        }
 
-		$escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
-		$kidList = (int)$request['KingdomId']; // park-LIST display stays parent-only; principalities shown in their own sections + aggregates roll up elsewhere
+        if (strlen($request['ReportFromDate']) == 0) {
+            $request['ReportFromDate'] = 'curdate()';
+        }
+        if (strlen($request['AverageWeeks']) == 0 && strlen($request['AverageMonths']) == 0) {
+            $request['AverageWeeks'] = 26;
+        }
+        if (strlen($request['KingdomId']) == 0) {
+            $request['KingdomId'] = '0';
+        }
+        if ($request['NativePopulace']) {
+            $native_populace .= "m.park_id = a.park_id and";
+        }
+        if ($request['Waivered']) {
+            $waivered_peeps = "m.waivered = 1 and";
+        }
 
-		// Only join mundane table when NativePopulace or Waivered filters are active
-		$mundane_join = (!empty($native_populace) || !empty($waivered_peeps))
-			? "left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id"
-			: "";
+        if (strlen($request['AverageWeeks']) > 0) {
+            $per_period = date("Y-m-d", strtotime("-$request[AverageWeeks] week"));
+        } else {
+            $per_period = date("Y-m-d", strtotime("-$request[AverageMonths] month"));
+        }
 
-		$sql = "select
+        $escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
+        $kidList = (int)$request['KingdomId']; // park-LIST display stays parent-only; principalities shown in their own sections + aggregates roll up elsewhere
+
+        // Only join mundane table when NativePopulace or Waivered filters are active
+        $mundane_join = (!empty($native_populace) || !empty($waivered_peeps))
+            ? "left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id"
+            : "";
+
+        $sql = "select
 						count(mundanesbyweek.mundane_id) attendance_count, p.park_id, p.name, p.has_heraldry,
 						pt.title, p.parktitle_id
 					from
@@ -1506,43 +2513,49 @@ class Report  extends Ork3 {
 										a.kingdom_id IN ($kidList)
 										and date >= '$per_period'
 										and a.mundane_id > 0
+										" . Attendance::TypeClause($type, 'a') . "
 									group by date_year, date_week3, mundane_id, a.park_id) mundanesbyweek
 								on p.park_id = mundanesbyweek.park_id
 					where p.kingdom_id IN ($kidList) and p.active = 'Active'
 					group by park_id
 					order by name";
-		logtrace('Report: GetKingdomParkAverages', array($request,$sql));
-		$r = $this->db->query($sql);
-		$response = array(
-			'Status' => Success(),
-			'KingdomParkAveragesSummary' => ''
-		);
-		if ($r === false) {
-			$response['Status'] = InvalidParameter();
-		} else {
-			$report = array();
-			while ($r->next()) {
-				$report[] = array( 'AttendanceCount' => $r->attendance_count, 'ParkId' => $r->park_id, 'ParkName' => $r->name, 'Title' => $r->title, 'ParkTitleId' => $r->parktitle_id, 'HasHeraldry' => $r->has_heraldry );
-			}
-			$response['KingdomParkAveragesSummary'] = $report;
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace('Report: GetKingdomParkAverages', array($request,$sql));
+        $r = $this->db->query($sql);
+        $response = array(
+            'Status' => Success(),
+            'KingdomParkAveragesSummary' => ''
+        );
+        if ($r === false) {
+            $response['Status'] = InvalidParameter();
+        } else {
+            $report = array();
+            while ($r->next()) {
+                $report[] = array( 'AttendanceCount' => $r->attendance_count, 'ParkId' => $r->park_id, 'ParkName' => $r->name, 'Title' => $r->title, 'ParkTitleId' => $r->parktitle_id, 'HasHeraldry' => $r->has_heraldry );
+            }
+            $response['KingdomParkAveragesSummary'] = $report;
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function GetKingdomParkMonthlyAverages($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false)
-			return $cache;
+    public function GetKingdomParkMonthlyAverages($request)
+    {
+        $type = $this->_takeAttendanceType($request);
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false) {
+            return $cache;
+        }
 
-		if (strlen($request['KingdomId']) == 0) $request['KingdomId'] = '0';
-		$monthly_period = date("Y-m-d", strtotime("-1 year"));
-		$escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
-		$kidList = (int)$request['KingdomId']; // park-LIST display stays parent-only; principalities shown in their own sections + aggregates roll up elsewhere
+        if (strlen($request['KingdomId']) == 0) {
+            $request['KingdomId'] = '0';
+        }
+        $monthly_period = date("Y-m-d", strtotime("-1 year"));
+        $escaped_kingdom_id = mysql_real_escape_string($request['KingdomId']);
+        $kidList = (int)$request['KingdomId']; // park-LIST display stays parent-only; principalities shown in their own sections + aggregates roll up elsewhere
 
-		// AVG(distinct players per month) per park — matches the Park page hero stat formula.
-		// Divides by the number of months with actual attendance, not a fixed 12,
-		// so parks with seasonal gaps report their active-period average.
-		$sql = "SELECT AVG(monthly_unique) AS monthly_avg, park_id
+        // AVG(distinct players per month) per park — matches the Park page hero stat formula.
+        // Divides by the number of months with actual attendance, not a fixed 12,
+        // so parks with seasonal gaps report their active-period average.
+        $sql = "SELECT AVG(monthly_unique) AS monthly_avg, park_id
 					FROM (
 						SELECT a.date_year, a.date_month, a.park_id,
 						       COUNT(DISTINCT a.mundane_id) AS monthly_unique
@@ -1550,46 +2563,197 @@ class Report  extends Ork3 {
 						WHERE a.kingdom_id IN ($kidList)
 						  AND a.date > '$monthly_period'
 						  AND a.mundane_id > 0
+						  " . Attendance::TypeClause($type, 'a') . "
 						GROUP BY a.date_year, a.date_month, a.park_id
 					) sub
 					GROUP BY park_id";
-		logtrace('Report: GetKingdomParkMonthlyAverages', array($request, $sql));
-		$r = $this->db->query($sql);
-		$response = array(
-			'Status' => Success(),
-			'KingdomParkMonthlySummary' => array()
-		);
-		if ($r === false) {
-			$response['Status'] = InvalidParameter();
-		} else {
-			$summary = array();
-			while ($r->next()) {
-				$summary[] = array( 'ParkId' => $r->park_id, 'MonthlyAvg' => round((float)$r->monthly_avg, 2) );
-			}
-			$response['KingdomParkMonthlySummary'] = $summary;
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace('Report: GetKingdomParkMonthlyAverages', array($request, $sql));
+        $r = $this->db->query($sql);
+        $response = array(
+            'Status' => Success(),
+            'KingdomParkMonthlySummary' => array()
+        );
+        if ($r === false) {
+            $response['Status'] = InvalidParameter();
+        } else {
+            $summary = array();
+            while ($r->next()) {
+                $summary[] = array( 'ParkId' => $r->park_id, 'MonthlyAvg' => round((float)$r->monthly_avg, 2) );
+            }
+            $response['KingdomParkMonthlySummary'] = $summary;
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function GetTopParksByAttendance($request=null) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false)
-			return $cache;
+    /**
+     * Extended kingdom park averages overlay (T-KNG-02): tp/tm per park + kingdom dedup totals.
+     *
+     * AttendanceType (in_person | online | all, default all) filters every attendance
+     * subquery. Informational only: the kingdom CountOnlineAttendance setting never
+     * applies here, and no park status/size is derived from these figures.
+     *
+     * @param array{KingdomId?: int, IsAdmin?: bool, AttendanceType?: string} $request
+     * @return array<string, array<string, int|float>>
+     */
+    public function GetKingdomExtendedParkAverages($request)
+    {
+        $kid = (int) ($request['KingdomId'] ?? 0);
+        $isAdmin = !empty($request['IsAdmin']);
+        $type = Attendance::NormalizeType($request['AttendanceType'] ?? null);
+        // All keeps the pre-change key; the other types get their own.
+        $typeKey = $type === 'all' ? [] : ['AttendanceType' => $type];
+        $typeClause = Attendance::TypeClause($type, 'a');
+        $cacheKey = Ork3::$Lib->ghettocache->key(['KingdomId' => $kid, 'IsAdmin' => (int) $isAdmin] + $typeKey);
+        if (($cached = Ork3::$Lib->ghettocache->get(__CLASS__ . '.GetKingdomExtendedParkAverages', $cacheKey, 1200)) !== false) {
+            return $cached;
+        }
 
-		if (strlen($request['Limit'] ?? '') == 0) $request['Limit'] = 25;
-		if (strlen($request['StartDate'] ?? '') == 0) $request['StartDate'] = date("Y-m-d", strtotime("-12 month"));
-		if (strlen($request['EndDate'] ?? '') == 0) $request['EndDate'] = date("Y-m-d");
+        $wkStart = date('Y-m-d', strtotime('-6 month'));
+        $wkEnd = date('Y-m-d');
+        $wkCount = max(1, (int) ceil((strtotime($wkEnd) - strtotime($wkStart)) / (7 * 86400)));
+        $statsKids = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kid)));
 
-		$escaped_start = mysql_real_escape_string($request['StartDate']);
-		$escaped_end = mysql_real_escape_string($request['EndDate']);
-		$escaped_limit = intval($request['Limit']);
-		$native_populace = $request['NativePopulace'] ? "m.park_id = a.park_id and" : "";
-		$waivered = $request['Waivered'] ? "m.waivered = 1 and" : "";
-		$mundane_join = (!empty($native_populace) || !empty($waivered))
-			? "left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id"
-			: "";
+        $weekly = $this->GetKingdomParkAverages(['KingdomId' => $kid, 'AverageMonths' => 6] + $typeKey);
+        $monthly = $this->GetKingdomParkMonthlyAverages(['KingdomId' => $kid] + $typeKey);
+        $result = [];
+        foreach ((array) ($weekly['KingdomParkAveragesSummary'] ?? []) as $park) {
+            $result[$park['ParkId']] = ['att' => (int) $park['AttendanceCount'], 'mo' => 0, 'tp' => 0, 'tm' => 0];
+        }
+        foreach ((array) ($monthly['KingdomParkMonthlySummary'] ?? []) as $park) {
+            if (isset($result[$park['ParkId']])) {
+                $result[$park['ParkId']]['mo'] = (float) $park['MonthlyAvg'];
+            } else {
+                $result[$park['ParkId']] = ['att' => 0, 'mo' => (float) $park['MonthlyAvg'], 'tp' => 0, 'tm' => 0];
+            }
+        }
 
-		$sql = "select
+        $pcSql = "SELECT a.park_id,
+                COUNT(DISTINCT a.mundane_id) AS total_players,
+                COUNT(DISTINCT CASE WHEN m.park_id = a.park_id THEN a.mundane_id END) AS total_members
+            FROM " . DB_PREFIX . "attendance a
+            INNER JOIN " . DB_PREFIX . "park p  ON p.park_id  = a.park_id  AND p.kingdom_id IN ({$statsKids})
+            INNER JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = a.mundane_id AND m.suspended = 0 AND m.active = 1
+            WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) AND a.mundane_id > 0{$typeClause}
+            GROUP BY a.park_id";
+        $this->db->Clear();
+        $pcResult = $this->db->DataSet($pcSql);
+        if ($pcResult && $pcResult->Size() > 0) {
+            while ($pcResult->Next()) {
+                $pid = (int) $pcResult->park_id;
+                if (isset($result[$pid])) {
+                    $result[$pid]['tp'] = (int) $pcResult->total_players;
+                    $result[$pid]['tm'] = (int) $pcResult->total_members;
+                } else {
+                    $result[$pid] = ['att' => 0, 'mo' => 0, 'tp' => (int) $pcResult->total_players, 'tm' => (int) $pcResult->total_members];
+                }
+            }
+        }
+
+        $knSql = "SELECT COUNT(*) AS katt FROM (
+                SELECT a.mundane_id FROM " . DB_PREFIX . "attendance a
+                INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
+                WHERE a.date >= '{$wkStart}'
+                    AND a.mundane_id > 0{$typeClause}
+                GROUP BY a.date_year, a.date_week3, a.mundane_id
+            ) t";
+        $this->db->Clear();
+        $knResult = $this->db->DataSet($knSql);
+        $katt = ($knResult && $knResult->Next()) ? (int) $knResult->katt : 0;
+
+        $knMoSql = "SELECT AVG(monthly_unique) AS kmo FROM (
+                SELECT a.date_year, a.date_month, COUNT(DISTINCT a.mundane_id) AS monthly_unique
+                FROM " . DB_PREFIX . "attendance a
+                INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
+                WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                    AND a.mundane_id > 0{$typeClause}
+                GROUP BY a.date_year, a.date_month
+            ) sub";
+        $this->db->Clear();
+        $knMoResult = $this->db->DataSet($knMoSql);
+        $kmo = ($knMoResult && $knMoResult->Next()) ? round((float) $knMoResult->kmo, 1) : 0;
+        $result['_kingdom'] = ['att' => $katt, 'mo' => $kmo, 'wk_count' => $wkCount];
+
+        if ($isAdmin) {
+            $this->db->Clear();
+            $prevWkResult = $this->db->DataSet(
+                "SELECT COUNT(mw.mundane_id) AS att, p.park_id
+                 FROM " . DB_PREFIX . "park p
+                 LEFT JOIN (
+                     SELECT a.mundane_id, a.park_id
+                     FROM " . DB_PREFIX . "attendance a
+                     INNER JOIN " . DB_PREFIX . "park pk ON pk.park_id = a.park_id AND pk.kingdom_id IN ({$statsKids})
+                     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+                       AND a.mundane_id > 0{$typeClause}
+                     GROUP BY date_year, date_week3, mundane_id, a.park_id
+                 ) mw ON p.park_id = mw.park_id
+                 WHERE p.kingdom_id IN ({$statsKids}) AND p.active = 'Active'
+                 GROUP BY p.park_id"
+            );
+            if ($prevWkResult) {
+                while ($prevWkResult->Next()) {
+                    $pid = (int) $prevWkResult->park_id;
+                    if (isset($result[$pid])) {
+                        $result[$pid]['prev_att'] = (int) $prevWkResult->att;
+                    }
+                }
+            }
+            $this->db->Clear();
+            $prevMoResult = $this->db->DataSet(
+                "SELECT AVG(monthly_unique) AS mo, park_id
+                 FROM (
+                     SELECT a.date_year, a.date_month, a.park_id,
+                            COUNT(DISTINCT a.mundane_id) AS monthly_unique
+                     FROM " . DB_PREFIX . "attendance a
+                     INNER JOIN " . DB_PREFIX . "park p ON p.park_id = a.park_id AND p.kingdom_id IN ({$statsKids})
+                     WHERE a.date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+                       AND a.date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                       AND a.mundane_id > 0{$typeClause}
+                     GROUP BY a.date_year, a.date_month, a.park_id
+                 ) mm
+                 GROUP BY park_id"
+            );
+            if ($prevMoResult) {
+                while ($prevMoResult->Next()) {
+                    $pid = (int) $prevMoResult->park_id;
+                    if (isset($result[$pid])) {
+                        $result[$pid]['prev_mo'] = round((float) $prevMoResult->mo, 2);
+                    }
+                }
+            }
+        }
+
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.GetKingdomExtendedParkAverages', $cacheKey, $result);
+    }
+
+    public function GetTopParksByAttendance($request = null)
+    {
+        $type = $this->_takeAttendanceType($request);
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 600)) !== false) {
+            return $cache;
+        }
+
+        if (strlen($request['Limit'] ?? '') == 0) {
+            $request['Limit'] = 25;
+        }
+        if (strlen($request['StartDate'] ?? '') == 0) {
+            $request['StartDate'] = date("Y-m-d", strtotime("-12 month"));
+        }
+        if (strlen($request['EndDate'] ?? '') == 0) {
+            $request['EndDate'] = date("Y-m-d");
+        }
+
+        $escaped_start = mysql_real_escape_string($request['StartDate']);
+        $escaped_end = mysql_real_escape_string($request['EndDate']);
+        $escaped_limit = intval($request['Limit']);
+        $native_populace = $request['NativePopulace'] ? "m.park_id = a.park_id and" : "";
+        $waivered = $request['Waivered'] ? "m.waivered = 1 and" : "";
+        $mundane_join = (!empty($native_populace) || !empty($waivered))
+            ? "left join " . DB_PREFIX . "mundane m on a.mundane_id = m.mundane_id"
+            : "";
+
+        $sql = "select
 					count(mundanesbyweek.mundane_id) attendance_count,
 					p.park_id, p.name, p.has_heraldry,
 					k.name kingdom_name, k.kingdom_id,
@@ -1609,6 +2773,7 @@ class Report  extends Ork3 {
 									date >= '$escaped_start'
 									and date <= '$escaped_end'
 									and a.mundane_id > 0
+									" . Attendance::TypeClause($type, 'a') . "
 								group by date_year, date_week3, mundane_id, a.park_id) mundanesbyweek
 							on p.park_id = mundanesbyweek.park_id
 				where p.active = 'Active'
@@ -1616,44 +2781,53 @@ class Report  extends Ork3 {
 				group by p.park_id
 				order by attendance_count desc
 				limit $escaped_limit";
-		logtrace('Report: GetTopParksByAttendance', array($request, $sql));
-		$r = $this->db->query($sql);
-		$response = array(
-			'Status' => Success(),
-			'TopParksSummary' => ''
-		);
-		if ($r === false) {
-			$response['Status'] = InvalidParameter();
-		} else {
-			$report = array();
-			while ($r->next()) {
-				$report[] = array(
-					'AttendanceCount' => $r->attendance_count,
-					'ParkId' => $r->park_id,
-					'ParkName' => $r->name,
-					'HasHeraldry' => $r->has_heraldry,
-					'KingdomId' => $r->kingdom_id,
-					'KingdomName' => $r->kingdom_name,
-					'Title' => $r->title,
-					'ParkTitleId' => $r->parktitle_id
-				);
-			}
-			$response['TopParksSummary'] = $report;
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace('Report: GetTopParksByAttendance', array($request, $sql));
+        $r = $this->db->query($sql);
+        $response = array(
+            'Status' => Success(),
+            'TopParksSummary' => ''
+        );
+        if ($r === false) {
+            $response['Status'] = InvalidParameter();
+        } else {
+            $report = array();
+            while ($r->next()) {
+                $report[] = array(
+                    'AttendanceCount' => $r->attendance_count,
+                    'ParkId' => $r->park_id,
+                    'ParkName' => $r->name,
+                    'HasHeraldry' => $r->has_heraldry,
+                    'KingdomId' => $r->kingdom_id,
+                    'KingdomName' => $r->kingdom_name,
+                    'Title' => $r->title,
+                    'ParkTitleId' => $r->parktitle_id
+                );
+            }
+            $response['TopParksSummary'] = $report;
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function GetActiveKingdomsSummary($request=null) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 3600)) !== false)
-			return $cache;
+    public function GetActiveKingdomsSummary($request = null)
+    {
+        $type = $this->_takeAttendanceType($request);
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 3600)) !== false) {
+            return $cache;
+        }
 
-		if (strlen($request['KingdomAverageWeeks'] ?? '') == 0) $request['KingdomAverageWeeks'] = 26;
-		if (strlen($request['ParkAttendanceWithin'] ?? '') == 0) $request['ParkAttendanceWithin'] = 4;
-		if (strlen($request['ReportFromDate'] ?? '') == 0) $request['ReportFromDate'] = 'curdate()';
-		$wk_start = date("Y-m-d", strtotime("-6 month"));
-		$mo_start = date("Y-m-d", strtotime("-1 year"));
-		$sql = "SELECT k.name, k.kingdom_id, k.parent_kingdom_id, pcount.park_count, ifnull(attendance_count,0) attendance, ifnull(monthly_attendance_count,0) monthly, ifnull(avg_monthly_att.avg_monthly,0) avg_monthly, ifnull(activeparks.parkcount,0) active_parks
+        if (strlen($request['KingdomAverageWeeks'] ?? '') == 0) {
+            $request['KingdomAverageWeeks'] = 26;
+        }
+        if (strlen($request['ParkAttendanceWithin'] ?? '') == 0) {
+            $request['ParkAttendanceWithin'] = 4;
+        }
+        if (strlen($request['ReportFromDate'] ?? '') == 0) {
+            $request['ReportFromDate'] = 'curdate()';
+        }
+        $wk_start = date("Y-m-d", strtotime("-6 month"));
+        $mo_start = date("Y-m-d", strtotime("-1 year"));
+        $sql = "SELECT k.name, k.kingdom_id, k.parent_kingdom_id, pcount.park_count, ifnull(attendance_count,0) attendance, ifnull(monthly_attendance_count,0) monthly, ifnull(avg_monthly_att.avg_monthly,0) avg_monthly, ifnull(activeparks.parkcount,0) active_parks
 					FROM `" . DB_PREFIX . "kingdom` k
 					left join
 						(select count(*) as park_count, pcnt.kingdom_id from `" . DB_PREFIX . "park` pcnt where pcnt.active = 'Active' group by pcnt.kingdom_id) pcount on pcount.kingdom_id = k.kingdom_id
@@ -1665,7 +2839,7 @@ class Report  extends Ork3 {
 										a.mundane_id, a.date_year, a.date_week3 as week, p.kingdom_id
 									from " . DB_PREFIX . "attendance a
 									inner join " . DB_PREFIX . "park p on p.park_id = a.park_id
-									where a.date >= '$wk_start' and a.mundane_id > 0 group by a.date_year, a.date_week3, a.mundane_id, p.kingdom_id)
+									where a.date >= '$wk_start' and a.mundane_id > 0" . Attendance::TypeClause($type, 'a') . " group by a.date_year, a.date_week3, a.mundane_id, p.kingdom_id)
 									mundanesbyweek group by kingdom_id) total_attendance on total_attendance.kingdom_id = k.kingdom_id
 					left join
 						(select
@@ -1673,8 +2847,8 @@ class Report  extends Ork3 {
 							from
 								(select
 										mundane_id, date_month as month, kingdom_id
-									from " . DB_PREFIX . "attendance
-									where date > '$mo_start' and mundane_id > 0 group by date_month, mundane_id, kingdom_id)
+									from " . DB_PREFIX . "attendance am
+									where date > '$mo_start' and mundane_id > 0" . Attendance::TypeClause($type, 'am') . " group by date_month, mundane_id, kingdom_id)
 									mundanesbymonth group by kingdom_id) monthly_attendance on monthly_attendance.kingdom_id = k.kingdom_id
 					left join
 						(select kingdom_id, AVG(monthly_unique) AS avg_monthly
@@ -1682,7 +2856,7 @@ class Report  extends Ork3 {
 								select a.date_year, a.date_month, p2.kingdom_id, COUNT(DISTINCT a.mundane_id) AS monthly_unique
 								from " . DB_PREFIX . "attendance a
 								inner join " . DB_PREFIX . "park p2 on p2.park_id = a.park_id
-								where a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) and a.mundane_id > 0
+								where a.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) and a.mundane_id > 0" . Attendance::TypeClause($type, 'a') . "
 								group by a.date_year, a.date_month, p2.kingdom_id
 							) mo_sub
 							group by kingdom_id) avg_monthly_att on avg_monthly_att.kingdom_id = k.kingdom_id
@@ -1695,177 +2869,242 @@ class Report  extends Ork3 {
 									from
 										(select
 												kingdom_id, park_id
-											from " . DB_PREFIX . "attendance
+											from " . DB_PREFIX . "attendance ap
 											where date > '" . date("Y-m-d", strtotime("-$request[ParkAttendanceWithin] week")) . "' group by date_week3, mundane_id) mundanesbyweek
 									group by kingdom_id, park_id) parkcount
 							group by kingdom_id) activeparks on activeparks.kingdom_id = k.kingdom_id
 					where active = 'Active'
                     order by k.name";
-		logtrace('Report: GetActiveKingdomsSummary', array($request, $sql));
-		$r = $this->db->query($sql);
-		$report = array();
-		while ($r->next()) {
-			$report[] = array( 'KingdomName' => $r->name, 'ParentKingdomId' => $r->parent_kingdom_id,
-									'IsPrincipality' => $r->parent_kingdom_id>0?1:0, 'KingdomId' => $r->kingdom_id,
-									'ParkCount' => $r->park_count, 'Attendance' => $r->attendance, 'Monthly' => $r->monthly, 'MonthlyAvg' => round((float)$r->avg_monthly, 1), 'Participation' => $r->active_parks );
-		}
-		$response = array(
-			'Status' => Success(),
-			'ActiveKingdomsSummaryList' => $report
-		);
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace('Report: GetActiveKingdomsSummary', array($request, $sql));
+        $r = $this->db->query($sql);
+        $report = array();
+        while ($r->next()) {
+            $report[] = array( 'KingdomName' => $r->name, 'ParentKingdomId' => $r->parent_kingdom_id,
+                                    'IsPrincipality' => $r->parent_kingdom_id > 0 ? 1 : 0, 'KingdomId' => $r->kingdom_id,
+                                    'ParkCount' => $r->park_count, 'Attendance' => $r->attendance, 'Monthly' => $r->monthly, 'MonthlyAvg' => round((float)$r->avg_monthly, 1), 'Participation' => $r->active_parks );
+        }
+        $response = array(
+            'Status' => Success(),
+            'ActiveKingdomsSummaryList' => $report
+        );
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function GetDistinctPlayerStats($request) {
-		$where = '';
-		if (valid_id($request['EventId'])) $where = "AND a.event_id = '" . mysql_real_escape_string($request['EventId']) . "'";
-		if (valid_id($request['KingdomId'])) $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
-		if (valid_id($request['ParkId'])) $where = "AND a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		if (valid_id($request['PrincipalityId'])) $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['PrincipalityId']))) . ")";
+    public function GetDistinctPlayerStats($request)
+    {
+        $where = '';
+        if (valid_id($request['EventId'])) {
+            $where = "AND a.event_id = '" . mysql_real_escape_string($request['EventId']) . "'";
+        }
+        if (valid_id($request['KingdomId'])) {
+            $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where = "AND a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        }
+        if (valid_id($request['PrincipalityId'])) {
+            $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['PrincipalityId']))) . ")";
+        }
 
-		$report_to = (!empty($request['ReportFromDate']) && $request['ReportFromDate'] !== date('Y-m-d'))
-			? $request['ReportFromDate'] : date('Y-m-d');
-		if ($request['PerWeeks'] == 1)
-			$per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} week"));
-		if ($request['PerMonths'] == 1)
-			$per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} month"));
-		if (!isset($per_period))
-			$per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} day"));
+        $report_to = (!empty($request['ReportFromDate']) && $request['ReportFromDate'] !== date('Y-m-d'))
+            ? $request['ReportFromDate'] : date('Y-m-d');
+        if ($request['PerWeeks'] == 1) {
+            $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} week"));
+        }
+        if ($request['PerMonths'] == 1) {
+            $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} month"));
+        }
+        if (!isset($per_period)) {
+            $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} day"));
+        }
 
-		$sql_total = "SELECT COUNT(DISTINCT a.mundane_id) AS total_distinct
+        // In-Person / Online split columns via Attendance::TypePredicate.
+        // Distinct-player semantics: a player with both kinds counts once in each split
+        // and once in the total. Weekly averages share one denominator (weeks with any
+        // attendance), so each split average is <= the total average.
+        $sql_total = "SELECT COUNT(DISTINCT a.mundane_id) AS total_distinct,
+				COUNT(DISTINCT CASE WHEN " . Attendance::TypePredicate('in_person') . " THEN a.mundane_id END) AS total_in_person,
+				COUNT(DISTINCT CASE WHEN " . Attendance::TypePredicate('online') . " THEN a.mundane_id END) AS total_online
 			FROM " . DB_PREFIX . "attendance a
 			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where";
 
-		$sql_avg = "SELECT AVG(weekly_unique) AS avg_per_week FROM (
-			SELECT COUNT(DISTINCT a.mundane_id) AS weekly_unique
+        $sql_avg = "SELECT AVG(weekly_unique) AS avg_per_week, AVG(weekly_in_person) AS avg_in_person, AVG(weekly_online) AS avg_online FROM (
+			SELECT COUNT(DISTINCT a.mundane_id) AS weekly_unique,
+				COUNT(DISTINCT CASE WHEN " . Attendance::TypePredicate('in_person') . " THEN a.mundane_id END) AS weekly_in_person,
+				COUNT(DISTINCT CASE WHEN " . Attendance::TypePredicate('online') . " THEN a.mundane_id END) AS weekly_online
 			FROM " . DB_PREFIX . "attendance a
 			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where
 			GROUP BY a.date_year, a.date_week3
 		) sub";
 
-		$total = 0;
-		$avg = 0;
+        $total = 0;
+        $in_person_total = 0;
+        $online_total = 0;
+        $avg = 0;
+        $in_person_avg = 0;
+        $online_avg = 0;
 
-		$r = $this->db->query($sql_total);
-		if ($r && $r->next()) {
-			$total = (int)$r->total_distinct;
-		}
+        $r = $this->db->query($sql_total);
+        if ($r && $r->next()) {
+            $total = (int)$r->total_distinct;
+            $in_person_total = (int)$r->total_in_person;
+            $online_total = (int)$r->total_online;
+        }
 
-		$r = $this->db->query($sql_avg);
-		if ($r && $r->next()) {
-			$avg = round((float)$r->avg_per_week, 1);
-		}
+        $r = $this->db->query($sql_avg);
+        if ($r && $r->next()) {
+            $avg = round((float)$r->avg_per_week, 1);
+            $in_person_avg = round((float)$r->avg_in_person, 1);
+            $online_avg = round((float)$r->avg_online, 1);
+        }
 
-		return array(
-			'Status' => Success(),
-			'TotalDistinctPlayers' => $total,
-			'AvgDistinctPerWeek' => $avg
-		);
-	}
+        return array(
+            'Status' => Success(),
+            'TotalDistinctPlayers' => $total,
+            'TotalDistinctPlayersInPerson' => $in_person_total,
+            'TotalDistinctPlayersOnline' => $online_total,
+            'AvgDistinctPerWeek' => $avg,
+            'AvgDistinctPerWeekInPerson' => $in_person_avg,
+            'AvgDistinctPerWeekOnline' => $online_avg
+        );
+    }
 
-	public function GetMonthlyChartData($request) {
-		$where = '';
-		if (valid_id($request['KingdomId'])) $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
-		if (valid_id($request['ParkId'])) $where = "AND a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		if (valid_id($request['PrincipalityId'])) $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['PrincipalityId']))) . ")";
+    public function GetMonthlyChartData($request)
+    {
+        $where = '';
+        if (valid_id($request['KingdomId'])) {
+            $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where = "AND a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        }
+        if (valid_id($request['PrincipalityId'])) {
+            $where = "AND a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['PrincipalityId']))) . ")";
+        }
 
-		$report_to = (!empty($request['ReportFromDate']) && $request['ReportFromDate'] !== date('Y-m-d'))
-			? $request['ReportFromDate'] : date('Y-m-d');
-		if ($request['PerWeeks'] == 1)
-			$per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} week"));
-		elseif ($request['PerMonths'] == 1)
-			$per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} month"));
-		else
-			$per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} day"));
+        $report_to = (!empty($request['ReportFromDate']) && $request['ReportFromDate'] !== date('Y-m-d'))
+            ? $request['ReportFromDate'] : date('Y-m-d');
+        if ($request['PerWeeks'] == 1) {
+            $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} week"));
+        } elseif ($request['PerMonths'] == 1) {
+            $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} month"));
+        } else {
+            $per_period = date('Y-m-d', strtotime("$report_to -{$request['Periods']} day"));
+        }
 
-		$sql = "SELECT a.date_year, a.date_month, COUNT(DISTINCT a.mundane_id) AS monthly_unique
+        // In-Person / Online split columns via Attendance::TypePredicate.
+        // Distinct players per month: a player with both kinds counts once in each split
+        // and once in Total, so InPerson + Online can exceed Total.
+        $sql = "SELECT a.date_year, a.date_month, COUNT(DISTINCT a.mundane_id) AS monthly_unique,
+				COUNT(DISTINCT CASE WHEN " . Attendance::TypePredicate('in_person') . " THEN a.mundane_id END) AS monthly_in_person,
+				COUNT(DISTINCT CASE WHEN " . Attendance::TypePredicate('online') . " THEN a.mundane_id END) AS monthly_online
 			FROM " . DB_PREFIX . "attendance a
 			WHERE a.date > '$per_period' AND a.date <= '$report_to' AND a.mundane_id > 0 $where
 			GROUP BY a.date_year, a.date_month
 			ORDER BY a.date_year, a.date_month";
 
-		$r = $this->db->query($sql);
-		$data = [];
-		if ($r) {
-			while ($r->next()) {
-				$data[] = [
-					'Year'  => (int)$r->date_year,
-					'Month' => (int)$r->date_month,
-					'Count' => (int)$r->monthly_unique,
-				];
-			}
-		}
-		return $data;
-	}
+        $r = $this->db->query($sql);
+        $data = [];
+        if ($r) {
+            while ($r->next()) {
+                $data[] = [
+                    'Year'  => (int)$r->date_year,
+                    'Month' => (int)$r->date_month,
+                    'Count' => (int)$r->monthly_unique,
+                    'Total' => (int)$r->monthly_unique,
+                    'InPerson' => (int)$r->monthly_in_person,
+                    'Online' => (int)$r->monthly_online,
+                    'OnlineOnly' => max(0, (int)$r->monthly_unique - (int)$r->monthly_in_person),
+                ];
+            }
+        }
+        return $data;
+    }
 
-	public function GetDistinctActivePlayerCount($weeks = 26) {
-		$cacheKey = Ork3::$Lib->ghettocache->key(['weeks' => $weeks]);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 1200)) !== false)
-			return $cache;
-		$since = date('Y-m-d', strtotime("-{$weeks} week"));
-		$sql = "SELECT COUNT(DISTINCT mundane_id) AS player_count FROM `" . DB_PREFIX . "attendance` WHERE date > '{$since}' AND mundane_id > 0";
-		$r = $this->db->query($sql);
-		$count = 0;
-		if ($r && $r->next()) {
-			$count = (int)$r->player_count;
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cacheKey, $count);
-	}
+    public function GetDistinctActivePlayerCount($weeks = 26)
+    {
+        $cacheKey = Ork3::$Lib->ghettocache->key(['weeks' => $weeks]);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cacheKey, 1200)) !== false) {
+            return $cache;
+        }
+        $since = date('Y-m-d', strtotime("-{$weeks} week"));
+        $sql = "SELECT COUNT(DISTINCT mundane_id) AS player_count FROM `" . DB_PREFIX . "attendance` WHERE date > '{$since}' AND mundane_id > 0";
+        $r = $this->db->query($sql);
+        $count = 0;
+        if ($r && $r->next()) {
+            $count = (int)$r->player_count;
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cacheKey, $count);
+    }
 
-	public function GetActivePlayers($request) {
-		if (strlen($request['MinimumWeeklyAttendance']) == 0) $request['MinimumWeeklyAttendance'] = 0;
-    	if (strlen($request['MinimumDailyAttendance']) == 0) $request['MinimumDailyAttendance'] = 6;
-        if (strlen($request['MonthlyCreditMaximum']) == 0) $request['MonthlyCreditMaximum'] = 6;
-		if (strlen($request['MinimumCredits']) == 0) $request['MinimumCredits'] = 9;
-		if (strlen($request['PerWeeks']) == 0 && strlen($request['PerMonths']) == 0) $request['PerMonths'] = 6;
-		if (strlen($request['ReportFromDate']) == 0) $request['ReportFromDate'] = 'curdate()';
+    public function GetActivePlayers($request)
+    {
+        if (strlen($request['MinimumWeeklyAttendance']) == 0) {
+            $request['MinimumWeeklyAttendance'] = 0;
+        }
+        if (strlen($request['MinimumDailyAttendance']) == 0) {
+            $request['MinimumDailyAttendance'] = 6;
+        }
+        if (strlen($request['MonthlyCreditMaximum']) == 0) {
+            $request['MonthlyCreditMaximum'] = 6;
+        }
+        if (strlen($request['MinimumCredits']) == 0) {
+            $request['MinimumCredits'] = 9;
+        }
+        if (strlen($request['PerWeeks']) == 0 && strlen($request['PerMonths']) == 0) {
+            $request['PerMonths'] = 6;
+        }
+        if (strlen($request['ReportFromDate']) == 0) {
+            $request['ReportFromDate'] = 'curdate()';
+        }
 
-		if (strlen($request['PerWeeks']) > 0) {
-			$per_period = date("Y-m-d", strtotime("-$request[PerWeeks] week"));
-		} else {
-			$per_period = date("Y-m-d", strtotime("-$request[PerMonths] month"));
-		}
+        if (strlen($request['PerWeeks']) > 0) {
+            $per_period = date("Y-m-d", strtotime("-$request[PerWeeks] week"));
+        } else {
+            $per_period = date("Y-m-d", strtotime("-$request[PerMonths] month"));
+        }
 
-    $park_id = valid_id($request['ParkId']) ? $request['ParkId'] : 0;
+        $park_id = valid_id($request['ParkId']) ? $request['ParkId'] : 0;
 
-		if (valid_id($request['ParkId'])) {
-			$location = " and m.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-    		if (valid_id($request['ByLocalPark'])) {
-    		    $park_comparator = " and a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "' ";
-    		}
-		} else if (strlen($request['KingdomId']) > 0 && $request['KingdomId'] > 0) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$location = " and m.kingdom_id IN ($kidList)";
-    		if (valid_id($request['ByKingdom'])) {
-    		    $park_list = Ork3::$Lib->Kingdom->GetParks($request);
-    		    $parks = array();
-    		    foreach ($park_list['Parks'] as $p => $park)
-    		        $parks[] = $p['ParkId'];
-    		    $park_comparator = " and a.park_id in (" . implode($parks) . ") ";
-    		}
-		} else {
-		    $park_comparator = "";
-		}
-		// Same scope, but on a.* (attendance row) instead of m.* (player home).
-		// This lets the 4 inner subqueries enter via idx_attendance_kingdom_date_*
-		// instead of full-scanning the date range and post-filtering by player kingdom.
-		// Semantic match to the GetKingdomPark{,Monthly}Averages rewrite (06714a9f):
-		// "active in this kingdom" = attendance recorded in this kingdom.
-		if (valid_id($request['ParkId'])) {
-			$activity_location = " and a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		} else if (strlen($request['KingdomId']) > 0 && $request['KingdomId'] > 0) {
-			$activity_location = " and a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
-		} else {
-			$activity_location = "";
-		}
-		$select_dues_paid = '';
-		if ($request['KingdomId'] > 0 || $request['ParkId'] > 0) {
+        if (valid_id($request['ParkId'])) {
+            $location = " and m.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+            if (valid_id($request['ByLocalPark'])) {
+                $park_comparator = " and a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "' ";
+            }
+        } elseif (strlen($request['KingdomId']) > 0 && $request['KingdomId'] > 0) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $location = " and m.kingdom_id IN ($kidList)";
+            if (valid_id($request['ByKingdom'])) {
+                $park_list = Ork3::$Lib->Kingdom->GetParks($request);
+                $parks = array();
+                foreach ($park_list['Parks'] as $p => $park) {
+                    $parks[] = $p['ParkId'];
+                }
+                $park_comparator = " and a.park_id in (" . implode($parks) . ") ";
+            }
+        } else {
+            $park_comparator = "";
+        }
+        // Same scope, but on a.* (attendance row) instead of m.* (player home).
+        // This lets the 4 inner subqueries enter via idx_attendance_kingdom_date_*
+        // instead of full-scanning the date range and post-filtering by player kingdom.
+        // Semantic match to the GetKingdomPark{,Monthly}Averages rewrite (06714a9f):
+        // "active in this kingdom" = attendance recorded in this kingdom.
+        if (valid_id($request['ParkId'])) {
+            $activity_location = " and a.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        } elseif (strlen($request['KingdomId']) > 0 && $request['KingdomId'] > 0) {
+            $activity_location = " and a.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
+        } else {
+            $activity_location = "";
+        }
+        $select_dues_paid = '';
+        if ($request['KingdomId'] > 0 || $request['ParkId'] > 0) {
             if ($request['DuesPaid']) {
-				// Check for non-revoked active or dues for life
-				$select_dues_paid = ', (SELECT COUNT(dues_id) FROM '  . DB_PREFIX . 'dues d WHERE d.mundane_id = attendance_summary.mundane_id AND d.kingdom_id = kingdom.kingdom_id AND d.revoked != 1 AND (d.dues_until >= CAST(CURRENT_TIMESTAMP AS DATE) OR d.dues_for_life = 1)) as duespaid';
-				$duespaid_order = 'duespaid desc, ';
-			}
-		}
+                // Check for non-revoked active or dues for life
+                $select_dues_paid = ', (SELECT COUNT(dues_id) FROM '  . DB_PREFIX . 'dues d WHERE d.mundane_id = attendance_summary.mundane_id AND d.kingdom_id = kingdom.kingdom_id AND d.revoked != 1 AND (d.dues_until >= CAST(CURRENT_TIMESTAMP AS DATE) OR d.dues_for_life = 1)) as duespaid';
+                $duespaid_order = 'duespaid desc, ';
+            }
+        }
         if (trimlen($request['Peerage']) > 0) {
             // Resolve the effective peerage via Custom-Title alias substitution
             // so an aliased Custom Title (e.g. "Sir Bob aka Knight of the Sword")
@@ -1885,12 +3124,12 @@ class Report  extends Ork3 {
             $peerage_clause = "and peers.peerage = '" . mysql_real_escape_string($request['Peerage']) . "'";
             $peer_field = 'peers.peerage, ';
         }
-		if ($request['Waivered']) {
-			$waiver_clause = ' and m.waivered = 1';
-		} else if ($request['UnWaivered']) {
-			$waiver_clause = ' and m.waivered = 0';
-		}
-		$sql = "
+        if ($request['Waivered']) {
+            $waiver_clause = ' and m.waivered = 1';
+        } elseif ($request['UnWaivered']) {
+            $waiver_clause = ' and m.waivered = 0';
+        }
+        $sql = "
                 select main_summary.*, total_monthly_credits, local_park_weeks, credit_counts.daily_credits, credit_counts.rop_limited_credits 
                     from
                         (select
@@ -1958,49 +3197,54 @@ class Report  extends Ork3 {
                                 group by a.date_year, a.date_week3, a.mundane_id) local_park_week_count
                             group by local_park_week_count.mundane_id) park_local_attendance on main_summary.mundane_id = park_local_attendance.mundane_id
 					";
-					// For last join, need to limit monthly credits to monthly credit maximum per kingdom config
-		logtrace('Report: GetActivePlayers', array($request,$sql));
-		$r = $this->db->query($sql);
-		$report = array();
-		if ($r !== false && $r->size() > 0) while ($r->next()) {
-			$report[] = array(
-					'KingdomName' => $r->kingdom_name,
-					'KingdomId' => $r->kingdom_id,
-					'ParentKingdomId' => $r->parent_kingodm_id,
-					'ParkName' => $r->park_name,
-					'ParkId' => $r->park_id,
-					'Persona' => $r->persona,
-					'MundaneId' => $r->mundane_id,
-					'TotalCredits' => $r->total_credits,
-    				'TotalMonthlyCredits' => $r->total_monthly_credits,
-					'WeeksAttended' => $r->weeks_attended,
-    				'LocalParkWeeksAttended' => $r->local_park_weeks,
-    				'ParkDaysAttended' => $r->park_days_attended,
-        			'DaysAttended' => $r->days_attended,
-        			'DailyCredits' => $r->daily_credits,
-        			'RopLimitedCredits' => $r->rop_limited_credits,
-					'DuesPaid' => $r->duespaid,
-					'Waivered' => $r->waivered
-				);
-		}
+        // For last join, need to limit monthly credits to monthly credit maximum per kingdom config
+        logtrace('Report: GetActivePlayers', array($request,$sql));
+        $r = $this->db->query($sql);
+        $report = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $report[] = array(
+                        'KingdomName' => $r->kingdom_name,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'ParkName' => $r->park_name,
+                        'ParkId' => $r->park_id,
+                        'Persona' => $r->persona,
+                        'MundaneId' => $r->mundane_id,
+                        'TotalCredits' => $r->total_credits,
+                        'TotalMonthlyCredits' => $r->total_monthly_credits,
+                        'WeeksAttended' => $r->weeks_attended,
+                        'LocalParkWeeksAttended' => $r->local_park_weeks,
+                        'ParkDaysAttended' => $r->park_days_attended,
+                        'DaysAttended' => $r->days_attended,
+                        'DailyCredits' => $r->daily_credits,
+                        'RopLimitedCredits' => $r->rop_limited_credits,
+                        'DuesPaid' => $r->duespaid,
+                        'Waivered' => $r->waivered
+                    );
+            }
+        }
 
-		$response = array(
-			'Status' => Success(),
-			'ActivePlayerSummary' => $report
-		);
+        $response = array(
+            'Status' => Success(),
+            'ActivePlayerSummary' => $report
+        );
 
-		return $response;
-	}
+        return $response;
+    }
 
-	public function GetReeveQualified($request) {
-		$where = '';
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$where = "and k.kingdom_id IN ($kidList)";
-		}
-		if (valid_id($request['ParkId'])) $where = "and p.park_id = '$request[ParkId]'";
+    public function GetReeveQualified($request)
+    {
+        $where = '';
+        if (valid_id($request['KingdomId'])) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $where = "and k.kingdom_id IN ($kidList)";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where = "and p.park_id = '$request[ParkId]'";
+        }
 
-		$sql = "select m.persona, m.mundane_id, m.reeve_qualified_until, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, p.park_id, p.name as park_name
+        $sql = "select m.persona, m.mundane_id, m.reeve_qualified_until, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, p.park_id, p.name as park_name
 					from " . DB_PREFIX . "mundane m
 						left join " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
 						left join " . DB_PREFIX . "park p on m.park_id = p.park_id
@@ -2010,38 +3254,41 @@ class Report  extends Ork3 {
 						and m.reeve_qualified_until >= CAST(CURRENT_TIMESTAMP AS DATE) 
 						$where
 					order by m.kingdom_id, m.park_id, m.persona";
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['ReeveQualified'] = array();
-			while ($r->next()) {
-				$response['ReeveQualified'][] = array(
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'ReeveQualifiedUntil' => $r->reeve_qualified_until,
-						'ParkId' => $r->park_id,
-						'ParkName' => $r->park_name,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'KingdomName' => $r->kingdom_name
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['ReeveQualified'] = array();
+            while ($r->next()) {
+                $response['ReeveQualified'][] = array(
+                        'MundaneId' => $r->mundane_id,
+                        'Persona' => $r->persona,
+                        'ReeveQualifiedUntil' => $r->reeve_qualified_until,
+                        'ParkId' => $r->park_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'KingdomName' => $r->kingdom_name
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
 
-	public function GetCorporaQualified($request) {
-		$where = '';
-		if (valid_id($request['KingdomId'])) {
-			$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-			$where = "and k.kingdom_id IN ($kidList)";
-		}
-		if (valid_id($request['ParkId'])) $where = "and p.park_id = '$request[ParkId]'";
+    public function GetCorporaQualified($request)
+    {
+        $where = '';
+        if (valid_id($request['KingdomId'])) {
+            $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+            $where = "and k.kingdom_id IN ($kidList)";
+        }
+        if (valid_id($request['ParkId'])) {
+            $where = "and p.park_id = '$request[ParkId]'";
+        }
 
-		$sql = "select m.persona, m.mundane_id, m.corpora_qualified_until, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, p.park_id, p.name as park_name
+        $sql = "select m.persona, m.mundane_id, m.corpora_qualified_until, k.kingdom_id, k.name as kingdom_name, k.parent_kingdom_id, p.park_id, p.name as park_name
 					from " . DB_PREFIX . "mundane m
 						left join " . DB_PREFIX . "kingdom k on m.kingdom_id = k.kingdom_id
 						left join " . DB_PREFIX . "park p on m.park_id = p.park_id
@@ -2051,56 +3298,57 @@ class Report  extends Ork3 {
 						and m.corpora_qualified_until >= CAST(CURRENT_TIMESTAMP AS DATE) 
 						$where
 					order by m.kingdom_id, m.park_id, m.persona";
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false && $r->size() > 0) {
-			$response['CorporaQualified'] = array();
-			while ($r->next()) {
-				$response['CorporaQualified'][] = array(
-						'MundaneId' => $r->mundane_id,
-						'Persona' => $r->persona,
-						'CorporaQualifiedUntil' => $r->corpora_qualified_until,
-						'ParkId' => $r->park_id,
-						'ParkName' => $r->park_name,
-						'KingdomId' => $r->kingdom_id,
-						'ParentKingdomId' => $r->parent_kingodm_id,
-						'KingdomName' => $r->kingdom_name
-					);
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-		}
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false && $r->size() > 0) {
+            $response['CorporaQualified'] = array();
+            while ($r->next()) {
+                $response['CorporaQualified'][] = array(
+                        'MundaneId' => $r->mundane_id,
+                        'Persona' => $r->persona,
+                        'CorporaQualifiedUntil' => $r->corpora_qualified_until,
+                        'ParkId' => $r->park_id,
+                        'ParkName' => $r->park_name,
+                        'KingdomId' => $r->kingdom_id,
+                        'ParentKingdomId' => $r->parent_kingodm_id,
+                        'KingdomName' => $r->kingdom_name
+                    );
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+        }
+        return $response;
+    }
 
-	public function GetDuesPaidList($request) {
-		$response = array();
-		$where = '';
-		if (!empty($request['Type']) && valid_id($request['Id'])) {
-			switch ($request['Type']) {
-				case 'Kingdom':
-					$where = ' AND d.kingdom_id = ' . mysql_real_escape_string($request['Id']);
-					break;
-				case 'Park':
-					$where = ' AND d.park_id = ' . mysql_real_escape_string($request['Id']);
-					break;
-			}
-		} else {
-			// Only process park and kingdom reqeusts.
-			 return [];
-		}
+    public function GetDuesPaidList($request)
+    {
+        $response = array();
+        $where = '';
+        if (!empty($request['Type']) && valid_id($request['Id'])) {
+            switch ($request['Type']) {
+                case 'Kingdom':
+                    $where = ' AND d.kingdom_id = ' . mysql_real_escape_string($request['Id']);
+                    break;
+                case 'Park':
+                    $where = ' AND d.park_id = ' . mysql_real_escape_string($request['Id']);
+                    break;
+            }
+        } else {
+            // Only process park and kingdom reqeusts.
+            return [];
+        }
 
-		if (strlen($request['Token']) > 0
-			&& ($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
-			&& Ork3::$Lib->authorization->HasAuthority($mundane_id, $request['Type'], $request['Id'], AUTH_EDIT)) {
-			// Unrestrict data when we have an authorized player
-			$restrict_access = false;
-		} else {
-			$restrict_access = true;
-		}
+        if (strlen($request['Token']) > 0
+            && ($mundane_id = Ork3::$Lib->authorization->IsAuthorized($request['Token'])) > 0
+            && Ork3::$Lib->authorization->HasAuthority($mundane_id, $request['Type'], $request['Id'], AUTH_EDIT)) {
+            // Unrestrict data when we have an authorized player
+            $restrict_access = false;
+        } else {
+            $restrict_access = true;
+        }
 
-		$sql = "select 
+        $sql = "select 
 				d.dues_id, 
 				d.mundane_id, 
 				d.kingdom_id, 
@@ -2117,9 +3365,9 @@ class Report  extends Ork3 {
 				d.revoked_by, 
 				d.import_transaction_id, 
 				m.persona,";
-		$sql .= (!$restrict_access) ? ' m.surname, m.given_name,':'NULL as surname, NULL as given_name,';
+        $sql .= (!$restrict_access) ? ' m.surname, m.given_name,' : 'NULL as surname, NULL as given_name,';
 
-		$sql .= "m.suspended, 
+        $sql .= "m.suspended, 
 				m.waivered,
 				k.name as kingdom_name, 
 				p.name as park_name
@@ -2130,72 +3378,95 @@ class Report  extends Ork3 {
 			where 
 				d.revoked = 0
 				AND (d.dues_until >= CAST(CURRENT_TIMESTAMP AS DATE) OR d.dues_for_life = 1)";
-			$sql .= $where;
-			$sql .= "  group by d.mundane_id order by m.kingdom_id ASC, m.park_id ASC, m.persona ASC, d.dues_until DESC";
+        $sql .= $where;
+        $sql .= "  group by d.mundane_id order by m.kingdom_id ASC, m.park_id ASC, m.persona ASC, d.dues_until DESC";
 
-		$r = $this->db->query($sql);
-		$response = array();
-		$kingdom = new Model_Kingdom();
-		$park = new Model_Park();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$response['DuesPaidList'][] = array(
-						'DuesId' => $r->dues_id,
-						'KingdomId' => $r->kingdom_id,
-						'KingdomName' => $kingdom->get_kingdom_name($r->kingdom_id),
-						'Persona' => $r->persona,
-						'GivenName' => $r->given_name,
-						'Surname' => $r->surname,
-						'MundaneId' => $r->mundane_id,
-						'Waivered' => $r->waivered,
-						'ParkId' => $r->park_id,
-						'ParkName' => $park->get_park_name($r->park_id),
-						'DuesUntil' => $r->dues_until,
-						'DuesFrom' => $r->dues_from,
-						'DuesForLife' => $r->dues_for_life,
-						'Revoked' => $r->revoked
-					);
-			}
-			$response['Status'] = Success();
-			$response['RestrictAccess'] = $restrict_access; 
-		}
+        $r = $this->db->query($sql);
+        $response = array();
+        $kingdom = new Model_Kingdom();
+        $park = new Model_Park();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $response['DuesPaidList'][] = array(
+                        'DuesId' => $r->dues_id,
+                        'KingdomId' => $r->kingdom_id,
+                        'KingdomName' => $kingdom->get_kingdom_name($r->kingdom_id),
+                        'Persona' => $r->persona,
+                        'GivenName' => $r->given_name,
+                        'Surname' => $r->surname,
+                        'MundaneId' => $r->mundane_id,
+                        'Waivered' => $r->waivered,
+                        'ParkId' => $r->park_id,
+                        'ParkName' => $park->get_park_name($r->park_id),
+                        'DuesUntil' => $r->dues_until,
+                        'DuesFrom' => $r->dues_from,
+                        'DuesForLife' => $r->dues_for_life,
+                        'Revoked' => $r->revoked
+                    );
+            }
+            $response['Status'] = Success();
+            $response['RestrictAccess'] = $restrict_access;
+        }
         return $response;
-	}
+    }
 
-	/* ------------------------------------------------------------------ */
-	/*  Park Attendance Explorer helpers & methods                        */
-	/* ------------------------------------------------------------------ */
+    /* ------------------------------------------------------------------ */
+    /*  Park Attendance Explorer helpers & methods                        */
+    /* ------------------------------------------------------------------ */
 
-	private function _periodExpr($period, $alias = 'a') {
-		switch ($period) {
-			case 'Weekly':
-				return "CONCAT({$alias}.date_year, '-W', LPAD({$alias}.date_week3, 2, '0'))";
-			case 'Monthly':
-				return "CONCAT({$alias}.date_year, '-', LPAD({$alias}.date_month, 2, '0'))";
-			case 'Quarterly':
-				return "CONCAT({$alias}.date_year, '-Q', CEIL({$alias}.date_month / 3))";
-			case 'Annually':
-				return "CAST({$alias}.date_year AS CHAR)";
-			default:
-				return "CONCAT({$alias}.date_year, '-', LPAD({$alias}.date_month, 2, '0'))";
-		}
-	}
+    /**
+     * Read the In-Person / Online / All request key for a report that filters by
+     * attendance type, and rewrite it in $request so the GhettoCache key carries it.
+     * 'all' (the default, also for missing or unknown values) removes the key, so All
+     * shares the pre-change cache entry and returns the pre-change result.
+     */
+    private function _takeAttendanceType(&$request): string
+    {
+        if (!is_array($request)) {
+            $request = array();
+        }
+        $type = Attendance::NormalizeType($request['AttendanceType'] ?? null);
+        unset($request['AttendanceType']);
+        if ($type !== 'all') {
+            $request['AttendanceType'] = $type;
+        }
+        return $type;
+    }
 
-	public function ParkAttendanceAllParks($request) {
-		$cache_key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false)
-			return $cache;
+    private function _periodExpr($period, $alias = 'a')
+    {
+        switch ($period) {
+            case 'Weekly':
+                return "CONCAT({$alias}.date_year, '-W', LPAD({$alias}.date_week3, 2, '0'))";
+            case 'Monthly':
+                return "CONCAT({$alias}.date_year, '-', LPAD({$alias}.date_month, 2, '0'))";
+            case 'Quarterly':
+                return "CONCAT({$alias}.date_year, '-Q', CEIL({$alias}.date_month / 3))";
+            case 'Annually':
+                return "CAST({$alias}.date_year AS CHAR)";
+            default:
+                return "CONCAT({$alias}.date_year, '-', LPAD({$alias}.date_month, 2, '0'))";
+        }
+    }
 
-		$kingdom_id  = mysql_real_escape_string($request['KingdomId']);
-		$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-		$start_date  = mysql_real_escape_string($request['StartDate']);
-		$end_date    = mysql_real_escape_string($request['EndDate']);
-		$period_expr = $this->_periodExpr($request['Period']);
-		$local_only  = !empty($request['LocalPlayersOnly']);
-		$local_clause = $local_only ? " AND m.park_id = a.park_id" : '';
+    public function ParkAttendanceAllParks($request)
+    {
+        $type = $this->_takeAttendanceType($request);
+        $cache_key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false) {
+            return $cache;
+        }
 
-		// Main query: per-park per-period aggregates
-		$sql = "SELECT
+        $kingdom_id  = mysql_real_escape_string($request['KingdomId']);
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+        $start_date  = mysql_real_escape_string($request['StartDate']);
+        $end_date    = mysql_real_escape_string($request['EndDate']);
+        $period_expr = $this->_periodExpr($request['Period']);
+        $local_only  = !empty($request['LocalPlayersOnly']);
+        $local_clause = $local_only ? " AND m.park_id = a.park_id" : '';
+
+        // Main query: per-park per-period aggregates
+        $sql = "SELECT
 					p.park_id,
 					p.name as park_name,
 					$period_expr as period_label,
@@ -2213,30 +3484,31 @@ class Report  extends Ork3 {
 					AND a.park_id > 0
 					AND p.active = 'Active'
 					$local_clause
+					" . Attendance::TypeClause($type, 'a') . "
 				GROUP BY p.park_id, period_label
 				ORDER BY p.name, period_label";
 
-		$r = $this->db->query($sql);
-		$response = array('Status' => Success(), 'Attendance' => array());
-		$kingdom_unique_players = 0;
-		$kingdom_unique_members = 0;
-		if ($r !== false && $r->size() > 0) {
-			do {
-				$response['Attendance'][] = array(
-					'ParkId' => $r->park_id,
-					'ParkName' => $r->park_name,
-					'PeriodLabel' => $r->period_label,
-					'TotalSignins' => $r->total_signins,
-					'UniquePlayers' => $r->unique_players,
-					'UniqueMembers' => $r->unique_members,
-					'WeeksInPeriod' => $r->weeks_in_period,
-					'MonthsInPeriod' => $r->months_in_period
-				);
-			} while ($r->next());
-		}
+        $r = $this->db->query($sql);
+        $response = array('Status' => Success(), 'Attendance' => array());
+        $kingdom_unique_players = 0;
+        $kingdom_unique_members = 0;
+        if ($r !== false && $r->size() > 0) {
+            do {
+                $response['Attendance'][] = array(
+                    'ParkId' => $r->park_id,
+                    'ParkName' => $r->park_name,
+                    'PeriodLabel' => $r->period_label,
+                    'TotalSignins' => $r->total_signins,
+                    'UniquePlayers' => $r->unique_players,
+                    'UniqueMembers' => $r->unique_members,
+                    'WeeksInPeriod' => $r->weeks_in_period,
+                    'MonthsInPeriod' => $r->months_in_period
+                );
+            } while ($r->next());
+        }
 
-		// Kingdom-wide unique counts — dedicated query to avoid double-counting cross-park visitors
-		$sql_kw = "SELECT
+        // Kingdom-wide unique counts — dedicated query to avoid double-counting cross-park visitors
+        $sql_kw = "SELECT
 					COUNT(DISTINCT a2.mundane_id) as kingdom_unique_players,
 					COUNT(DISTINCT CASE WHEN m2.park_id = a2.park_id THEN a2.mundane_id END) as kingdom_unique_members
 				FROM " . DB_PREFIX . "attendance a2
@@ -2247,17 +3519,18 @@ class Report  extends Ork3 {
 					AND a2.date <= '$end_date'
 					AND a2.park_id > 0
 					AND p2.active = 'Active'"
-					. ($local_only ? " AND m2.park_id = a2.park_id" : '');
+                    . ($local_only ? " AND m2.park_id = a2.park_id" : '')
+                    . Attendance::TypeClause($type, 'a2');
 
-		$r_kw = $this->db->query($sql_kw);
-		if ($r_kw !== false) {
-			$r_kw->next(); // DataSet() pre-fetches, but guard against edge cases where it doesn't
-			$kingdom_unique_players = (int)($r_kw->kingdom_unique_players ?? 0);
-			$kingdom_unique_members = (int)($r_kw->kingdom_unique_members ?? 0);
-		}
+        $r_kw = $this->db->query($sql_kw);
+        if ($r_kw !== false) {
+            $r_kw->next(); // DataSet() pre-fetches, but guard against edge cases where it doesn't
+            $kingdom_unique_players = (int)($r_kw->kingdom_unique_players ?? 0);
+            $kingdom_unique_members = (int)($r_kw->kingdom_unique_members ?? 0);
+        }
 
-		// Second query: count of park members with 2+/3+/4+ sign-ins per park per period
-		$sql2 = "SELECT
+        // Second query: count of park members with 2+/3+/4+ sign-ins per park per period
+        $sql2 = "SELECT
 					sub.park_id,
 					sub.period_label,
 					SUM(CASE WHEN sub.cnt >= 2 THEN 1 ELSE 0 END) as members_2plus,
@@ -2274,86 +3547,113 @@ class Report  extends Ork3 {
 						AND a.date <= '$end_date'
 						AND a.park_id > 0
 						AND p.active = 'Active'
+						" . Attendance::TypeClause($type, 'a') . "
 					GROUP BY a.park_id, period_label, a.mundane_id
 				) sub
 				GROUP BY sub.park_id, sub.period_label";
 
-		$r2 = $this->db->query($sql2);
-		$membercounts = array();
-		if ($r2 !== false && $r2->size() > 0) {
-			do {
-				$membercounts[$r2->park_id . '|' . $r2->period_label] = array(
-					'Members2Plus' => $r2->members_2plus,
-					'Members3Plus' => $r2->members_3plus,
-					'Members4Plus' => $r2->members_4plus
-				);
-			} while ($r2->next());
-		}
+        $r2 = $this->db->query($sql2);
+        $membercounts = array();
+        if ($r2 !== false && $r2->size() > 0) {
+            do {
+                $membercounts[$r2->park_id . '|' . $r2->period_label] = array(
+                    'Members2Plus' => $r2->members_2plus,
+                    'Members3Plus' => $r2->members_3plus,
+                    'Members4Plus' => $r2->members_4plus
+                );
+            } while ($r2->next());
+        }
 
-		// Attach member counts to each row
-		foreach ($response['Attendance'] as &$row) {
-			$lookup = $row['ParkId'] . '|' . $row['PeriodLabel'];
-			$row['Members2Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members2Plus'] : 0;
-			$row['Members3Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members3Plus'] : 0;
-			$row['Members4Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members4Plus'] : 0;
-		}
-		unset($row);
+        // Attach member counts to each row
+        foreach ($response['Attendance'] as &$row) {
+            $lookup = $row['ParkId'] . '|' . $row['PeriodLabel'];
+            $row['Members2Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members2Plus'] : 0;
+            $row['Members3Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members3Plus'] : 0;
+            $row['Members4Plus'] = isset($membercounts[$lookup]) ? $membercounts[$lookup]['Members4Plus'] : 0;
+        }
+        unset($row);
 
-		// Kingdom-wide unique counts from dedicated query
-		$response['Summary'] = array(
-			'UniquePlayers' => $kingdom_unique_players,
-			'UniqueMembers' => $kingdom_unique_members,
-		);
+        // Kingdom-wide unique counts from dedicated query
+        $response['Summary'] = array(
+            'UniquePlayers' => $kingdom_unique_players,
+            'UniqueMembers' => $kingdom_unique_members,
+        );
 
-		logtrace("Report->ParkAttendanceAllParks()", array($this->db->lastSql, $request));
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
-	}
+        logtrace("Report->ParkAttendanceAllParks()", array($this->db->lastSql, $request));
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
+    }
 
-	public function GetNewPlayerAttendance($request) {
-		$cache_key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false)
-			return $cache;
+    public function GetNewPlayerAttendance($request)
+    {
+        // Attendance type (In-Person / Online / All). Who counts as a new player, and
+        // their first park, always come from ALL attendance: an online sign-in is real
+        // participation, so a player whose first sign-in was online is not "new" again
+        // at their first in-person visit. The type filters only the attendance counted
+        // and shown: visits, returning (2+ visits), last sign-in; New Players becomes the
+        // new players with at least one sign-in of that type in range at this scope.
+        $type = $this->_takeAttendanceType($request);
+        $cache_key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false) {
+            return $cache;
+        }
 
-		$kingdom_id     = intval($request['KingdomId']);
-		$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-		$park_id        = intval($request['ParkId']);
-		$start_date     = mysql_real_escape_string($request['StartDate']);
-		$end_date       = mysql_real_escape_string($request['EndDate']);
-		$include_detail = !empty($request['IncludePlayerDetails']);
+        $kingdom_id     = intval($request['KingdomId']);
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+        $park_id        = intval($request['ParkId']);
+        $start_date     = mysql_real_escape_string($request['StartDate']);
+        $end_date       = mysql_real_escape_string($request['EndDate']);
+        $include_detail = !empty($request['IncludePlayerDetails']);
 
-		// Scope for the detail query's inner subquery (uses fp/pk aliases).
-		if ($park_id > 0) {
-			$scope_where = "AND fp.park_id = $park_id";
-		} else {
-			$scope_where = "AND pk.kingdom_id IN ($kidList)";
-		}
+        // Scope for the detail query's inner subquery (uses fp/pk aliases).
+        if ($park_id > 0) {
+            $scope_where = "AND fp.park_id = $park_id";
+        } else {
+            $scope_where = "AND pk.kingdom_id IN ($kidList)";
+        }
 
-		// Park scope applied to the outer parks table in the summary query.
-		if ($park_id > 0) {
-			$park_scope_where = "AND p.park_id = $park_id";
-		} else {
-			$park_scope_where = "AND p.kingdom_id IN ($kidList)";
-		}
+        // Park scope applied to the outer parks table in the summary query.
+        if ($park_id > 0) {
+            $park_scope_where = "AND p.park_id = $park_id";
+        } else {
+            $park_scope_where = "AND p.kingdom_id IN ($kidList)";
+        }
 
-		// Visit counts: only count visits at parks within the target kingdom during the range.
-		if ($park_id > 0) {
-			$visit_scope = "AND a_range.park_id = $park_id";
-		} else {
-			$visit_scope = "AND a_range.kingdom_id IN ($kidList)";
-		}
+        // Visit counts: only count visits at parks within the target kingdom during the range.
+        if ($park_id > 0) {
+            $visit_scope = "AND a_range.park_id = $park_id";
+        } else {
+            $visit_scope = "AND a_range.kingdom_id IN ($kidList)";
+        }
+        $visit_scope .= Attendance::TypeClause($type, 'a_range');
+        // All: every new player. Filtered: new players with at least one in-range sign-in
+        // of that type at a park within this report's scope (np.has_type), so a sign-in
+        // of that type somewhere else never counts them here. The scope is by park, the
+        // same as the first-park attribution (not attendance.kingdom_id, which can lag a
+        // park's kingdom), so In-Person equals All when no sign-in is online. All keeps
+        // the original SQL: no has_type column.
+        if ($type === 'all') {
+            $new_player_col = 'np.mundane_id';
+            $np_type_col    = '';
+        } else {
+            $np_scope       = $park_id > 0
+                ? "a_in.park_id = $park_id"
+                : "a_in.park_id IN (SELECT ps.park_id FROM " . DB_PREFIX . "park ps WHERE ps.kingdom_id IN ($kidList))";
+            $new_player_col = 'CASE WHEN np.has_type = 1 THEN np.mundane_id END';
+            $np_type_col    = ",\n\t\t\t\t       MAX($np_scope AND " . Attendance::TypePredicate($type, 'a_in') . ") AS has_type";
+        }
 
-		// Summary query: all active parks with new player stats; parks with no new players show zeros.
-		$sql_summary = "SELECT
+        // Summary query: all active parks with new player stats; parks with no new players show zeros.
+        $sql_summary = "SELECT
 				p.park_id,
 				p.name AS park_name,
-				COUNT(DISTINCT np.mundane_id) AS new_players,
+				COUNT(DISTINCT $new_player_col) AS new_players,
 				SUM(CASE WHEN vc.visit_count >= 2 THEN 1 ELSE 0 END) AS returning_players,
 				COALESCE(SUM(vc.visit_count), 0) AS new_player_visits
 			FROM " . DB_PREFIX . "park p
 			LEFT JOIN (
 				-- New players: first sign-in is in range AND no earlier sign-in exists.
 				-- NOT EXISTS uses the mundane_id index on a_pre; avoids a full-table MIN() scan.
-				SELECT a_in.mundane_id, MIN(a_in.park_id) AS first_park_id
+				SELECT a_in.mundane_id, MIN(a_in.park_id) AS first_park_id$np_type_col
 				FROM " . DB_PREFIX . "attendance a_in
 				WHERE a_in.mundane_id > 0
 				  AND a_in.park_id > 0
@@ -2384,33 +3684,35 @@ class Report  extends Ork3 {
 			GROUP BY p.park_id, p.name
 			ORDER BY p.name";
 
-		$r = $this->db->query($sql_summary);
-		$response = array(
-			'Status'        => Success(),
-			'Summary'       => array(),
-			'PlayerDetails' => array()
-		);
+        $r = $this->db->query($sql_summary);
+        $response = array(
+            'Status'        => Success(),
+            'Summary'       => array(),
+            'PlayerDetails' => array()
+        );
 
-		if ($r !== false && $r->size() > 0) {
-			do {
-				if (empty($r->park_name)) continue;
-				$new   = intval($r->new_players);
-				$ret   = intval($r->returning_players);
-				$visits = intval($r->new_player_visits);
-				$response['Summary'][] = array(
-					'ParkId'                => $r->park_id,
-					'ParkName'              => $r->park_name,
-					'NewPlayers'            => $new,
-					'ReturningPlayers'      => $ret,
-					'ReturnPct'             => $new > 0 ? round(($ret / $new) * 100, 1) : 0,
-					'NewPlayerVisits'       => $visits,
-					'AvgVisitsPerNewPlayer' => $new > 0 ? round($visits / $new, 2) : 0
-				);
-			} while ($r->next());
-		}
+        if ($r !== false && $r->size() > 0) {
+            do {
+                if (empty($r->park_name)) {
+                    continue;
+                }
+                $new   = intval($r->new_players);
+                $ret   = intval($r->returning_players);
+                $visits = intval($r->new_player_visits);
+                $response['Summary'][] = array(
+                    'ParkId'                => $r->park_id,
+                    'ParkName'              => $r->park_name,
+                    'NewPlayers'            => $new,
+                    'ReturningPlayers'      => $ret,
+                    'ReturnPct'             => $new > 0 ? round(($ret / $new) * 100, 1) : 0,
+                    'NewPlayerVisits'       => $visits,
+                    'AvgVisitsPerNewPlayer' => $new > 0 ? round($visits / $new, 2) : 0
+                );
+            } while ($r->next());
+        }
 
-		if ($include_detail) {
-			$sql_detail = "SELECT
+        if ($include_detail) {
+            $sql_detail = "SELECT
 					p.park_id,
 					p.name AS park_name,
 					np.mundane_id,
@@ -2448,47 +3750,78 @@ class Report  extends Ork3 {
 					GROUP BY a_range.mundane_id
 				) vc ON vc.mundane_id = np.mundane_id
 				INNER JOIN (
-					SELECT mundane_id, MAX(date) AS last_signin_date
-					FROM " . DB_PREFIX . "attendance
-					WHERE mundane_id > 0
-					  AND date >= '$start_date'
-					GROUP BY mundane_id
+					SELECT a_last.mundane_id, MAX(a_last.date) AS last_signin_date
+					FROM " . DB_PREFIX . "attendance a_last
+					WHERE a_last.mundane_id > 0
+					  AND a_last.date >= '$start_date'
+					  " . Attendance::TypeClause($type, 'a_last') . "
+					GROUP BY a_last.mundane_id
 				) ls ON ls.mundane_id = np.mundane_id
 				ORDER BY p.name, m.persona";
 
-			$rd = $this->db->query($sql_detail);
-			if ($rd !== false && $rd->size() > 0) {
-				do {
-					if (empty($rd->park_name) || empty($rd->persona)) continue;
-					$response['PlayerDetails'][] = array(
-						'ParkId'          => $rd->park_id,
-						'ParkName'        => $rd->park_name,
-						'MundaneId'       => $rd->mundane_id,
-						'Persona'         => $rd->persona,
-						'FirstSignInDate' => $rd->first_signin_date,
-						'VisitsInPeriod'  => $rd->visits_in_period,
-						'LastSignInDate'  => $rd->last_signin_date
-					);
-				} while ($rd->next());
-			}
-		}
+            $rd = $this->db->query($sql_detail);
+            if ($rd !== false && $rd->size() > 0) {
+                do {
+                    if (empty($rd->park_name) || empty($rd->persona)) {
+                        continue;
+                    }
+                    $response['PlayerDetails'][] = array(
+                        'ParkId'          => $rd->park_id,
+                        'ParkName'        => $rd->park_name,
+                        'MundaneId'       => $rd->mundane_id,
+                        'Persona'         => $rd->persona,
+                        'FirstSignInDate' => $rd->first_signin_date,
+                        'VisitsInPeriod'  => $rd->visits_in_period,
+                        'LastSignInDate'  => $rd->last_signin_date
+                    );
+                } while ($rd->next());
+            }
+        }
 
-		logtrace("Report->GetNewPlayerAttendance()", array($this->db->lastSql, $request));
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
-	}
+        logtrace("Report->GetNewPlayerAttendance()", array($this->db->lastSql, $request));
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
+    }
 
-	public function GetNewPlayerAttendanceByKingdom($request) {
-		$cache_key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false)
-			return $cache;
+    public function GetNewPlayerAttendanceByKingdom($request)
+    {
+        // Attendance type: same rule as GetNewPlayerAttendance. New-player identity and
+        // first kingdom come from ALL attendance; the type filters the counted visits,
+        // and New Players becomes those with at least one sign-in of that type in range
+        // in their first kingdom.
+        $type = $this->_takeAttendanceType($request);
+        $cache_key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $cache_key, 300)) !== false) {
+            return $cache;
+        }
 
-		$start_date = mysql_real_escape_string($request['StartDate']);
-		$end_date   = mysql_real_escape_string($request['EndDate']);
+        $start_date = mysql_real_escape_string($request['StartDate']);
+        $end_date   = mysql_real_escape_string($request['EndDate']);
+        // Filtered: counted only with a sign-in of that type in range at a park of this
+        // kingdom (tk). By park kingdom, the same as the first-kingdom attribution, so
+        // In-Person equals All when no sign-in is online. All keeps the original SQL.
+        if ($type === 'all') {
+            $new_player_col = 'np.mundane_id';
+            $tk_join        = '';
+        } else {
+            $new_player_col = 'CASE WHEN tk.mundane_id IS NOT NULL THEN np.mundane_id END';
+            $tk_join        = "
+			LEFT JOIN (
+				-- New-player candidates with a sign-in of the selected type per park kingdom.
+				SELECT a_t.mundane_id, pt.kingdom_id
+				FROM " . DB_PREFIX . "attendance a_t
+				INNER JOIN " . DB_PREFIX . "park pt ON pt.park_id = a_t.park_id
+				WHERE a_t.mundane_id > 0
+				  AND a_t.date >= '$start_date'
+				  AND a_t.date <= '$end_date'
+				  " . Attendance::TypeClause($type, 'a_t') . "
+				GROUP BY a_t.mundane_id, pt.kingdom_id
+			) tk ON tk.mundane_id = np.mundane_id AND tk.kingdom_id = k.kingdom_id";
+        }
 
-		$sql = "SELECT
+        $sql = "SELECT
 				k.kingdom_id,
 				k.name AS kingdom_name,
-				COUNT(DISTINCT np.mundane_id) AS new_players,
+				COUNT(DISTINCT $new_player_col) AS new_players,
 				SUM(CASE WHEN vc.visit_count >= 2 THEN 1 ELSE 0 END) AS returning_players,
 				COALESCE(SUM(vc.visit_count), 0) AS new_player_visits
 			FROM " . DB_PREFIX . "kingdom k
@@ -2517,75 +3850,82 @@ class Report  extends Ork3 {
 				WHERE a_range.date >= '$start_date'
 				  AND a_range.date <= '$end_date'
 				  AND a_range.mundane_id > 0
+				  " . Attendance::TypeClause($type, 'a_range') . "
 				GROUP BY a_range.mundane_id, a_range.kingdom_id
-			) vc ON vc.mundane_id = np.mundane_id AND vc.kingdom_id = k.kingdom_id
+			) vc ON vc.mundane_id = np.mundane_id AND vc.kingdom_id = k.kingdom_id$tk_join
 			WHERE k.active = 'Active'
 			  AND k.name IS NOT NULL
 			  AND k.name != ''
 			GROUP BY k.kingdom_id, k.name
 			ORDER BY k.name";
 
-		$r = $this->db->query($sql);
-		$response = array(
-			'Status'  => Success(),
-			'Summary' => array()
-		);
+        $r = $this->db->query($sql);
+        $response = array(
+            'Status'  => Success(),
+            'Summary' => array()
+        );
 
-		if ($r !== false && $r->size() > 0) {
-			do {
-				if (empty($r->kingdom_name)) continue;
-				$new    = intval($r->new_players);
-				$ret    = intval($r->returning_players);
-				$visits = intval($r->new_player_visits);
-				$response['Summary'][] = array(
-					'KingdomId'             => $r->kingdom_id,
-					'KingdomName'           => $r->kingdom_name,
-					'NewPlayers'            => $new,
-					'ReturningPlayers'      => $ret,
-					'ReturnPct'             => $new > 0 ? round(($ret / $new) * 100, 1) : 0,
-					'NewPlayerVisits'       => $visits,
-					'AvgVisitsPerNewPlayer' => $new > 0 ? round($visits / $new, 2) : 0
-				);
-			} while ($r->next());
-		}
+        if ($r !== false && $r->size() > 0) {
+            do {
+                if (empty($r->kingdom_name)) {
+                    continue;
+                }
+                $new    = intval($r->new_players);
+                $ret    = intval($r->returning_players);
+                $visits = intval($r->new_player_visits);
+                $response['Summary'][] = array(
+                    'KingdomId'             => $r->kingdom_id,
+                    'KingdomName'           => $r->kingdom_name,
+                    'NewPlayers'            => $new,
+                    'ReturningPlayers'      => $ret,
+                    'ReturnPct'             => $new > 0 ? round(($ret / $new) * 100, 1) : 0,
+                    'NewPlayerVisits'       => $visits,
+                    'AvgVisitsPerNewPlayer' => $new > 0 ? round($visits / $new, 2) : 0
+                );
+            } while ($r->next());
+        }
 
-		logtrace("Report->GetNewPlayerAttendanceByKingdom()", array($this->db->lastSql, $request));
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
-	}
+        logtrace("Report->GetNewPlayerAttendanceByKingdom()", array($this->db->lastSql, $request));
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $cache_key, $response);
+    }
 
-	public function ParkAttendanceSinglePark($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false)
-			return $cache;
+    public function ParkAttendanceSinglePark($request)
+    {
+        $type = $this->_takeAttendanceType($request);
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
+            return $cache;
+        }
 
-		$park_id    = mysql_real_escape_string($request['ParkId']);
-		$kingdom_id = mysql_real_escape_string($request['KingdomId']);
-		$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
-		$start_date = mysql_real_escape_string($request['StartDate']);
-		$end_date   = mysql_real_escape_string($request['EndDate']);
-		$min_signins = intval($request['MinimumSignIns']);
-		$period_expr = $this->_periodExpr($request['Period']);
+        $park_id    = mysql_real_escape_string($request['ParkId']);
+        $kingdom_id = mysql_real_escape_string($request['KingdomId']);
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId'])));
+        $start_date = mysql_real_escape_string($request['StartDate']);
+        $end_date   = mysql_real_escape_string($request['EndDate']);
+        $min_signins = intval($request['MinimumSignIns']);
+        $period_expr = $this->_periodExpr($request['Period']);
 
-		$local_only = !empty($request['LocalPlayersOnly']);
-		$local_filter = $local_only ? "AND m.park_id = '$park_id'" : '';
+        $local_only = !empty($request['LocalPlayersOnly']);
+        $local_filter = $local_only ? "AND m.park_id = '$park_id'" : '';
 
-		$min_filter = '';
-		if ($min_signins > 0) {
-			$min_filter = "AND a.mundane_id IN (
+        $min_filter = '';
+        if ($min_signins > 0) {
+            $min_filter = "AND a.mundane_id IN (
 				SELECT a2.mundane_id
 				FROM " . DB_PREFIX . "attendance a2" .
-				($local_only ? " INNER JOIN " . DB_PREFIX . "mundane m2 ON a2.mundane_id = m2.mundane_id AND m2.park_id = '$park_id'" : "") . "
+                ($local_only ? " INNER JOIN " . DB_PREFIX . "mundane m2 ON a2.mundane_id = m2.mundane_id AND m2.park_id = '$park_id'" : "") . "
 				WHERE a2.park_id = '$park_id'
 					AND a2.kingdom_id IN ($kidList)
 					AND a2.date >= '$start_date'
 					AND a2.date <= '$end_date'
 					AND a2.mundane_id > 0
+					" . Attendance::TypeClause($type, 'a2') . "
 				GROUP BY a2.mundane_id
 				HAVING COUNT(*) >= $min_signins
 			)";
-		}
+        }
 
-		$sql = "SELECT
+        $sql = "SELECT
 					a.mundane_id,
 					m.persona,
 					m.waivered,
@@ -2606,40 +3946,42 @@ class Report  extends Ork3 {
 					AND a.mundane_id > 0
 					$local_filter
 					$min_filter
+					" . Attendance::TypeClause($type, 'a') . "
 				GROUP BY a.mundane_id, period_label
 				ORDER BY m.persona, period_label";
 
-		$r = $this->db->query($sql);
-		$response = array('Status' => Success(), 'Attendance' => array());
-		if ($r !== false && $r->size() > 0) {
-			do {
-				// Determine dues paid status
-				$dues_paid = null;
-				if ($r->dues_for_life == 1) {
-					$dues_paid = 'Life';
-				} else if ($r->dues_until && $r->dues_until >= date('Y-m-d')) {
-					$dues_paid = $r->dues_until;
-				}
+        $r = $this->db->query($sql);
+        $response = array('Status' => Success(), 'Attendance' => array());
+        if ($r !== false && $r->size() > 0) {
+            do {
+                // Determine dues paid status
+                $dues_paid = null;
+                if ($r->dues_for_life == 1) {
+                    $dues_paid = 'Life';
+                } elseif ($r->dues_until && $r->dues_until >= date('Y-m-d')) {
+                    $dues_paid = $r->dues_until;
+                }
 
-				$response['Attendance'][] = array(
-					'MundaneId' => $r->mundane_id,
-					'Persona' => $r->persona,
-					'Waivered' => $r->waivered,
-					'DuesPaid' => $dues_paid,
-					'PeriodLabel' => $r->period_label,
-					'SignInCount' => $r->signin_count
-				);
-			} while ($r->next());
-		}
+                $response['Attendance'][] = array(
+                    'MundaneId' => $r->mundane_id,
+                    'Persona' => $r->persona,
+                    'Waivered' => $r->waivered,
+                    'DuesPaid' => $dues_paid,
+                    'PeriodLabel' => $r->period_label,
+                    'SignInCount' => $r->signin_count
+                );
+            } while ($r->next());
+        }
 
-		logtrace("Report->ParkAttendanceSinglePark()", array($this->db->lastSql, $request));
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        logtrace("Report->ParkAttendanceSinglePark()", array($this->db->lastSql, $request));
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function GetParkDistanceMatrix($request) {
-		$kingdom_id = intval($request['KingdomId']);
+    public function GetParkDistanceMatrix($request)
+    {
+        $kingdom_id = intval($request['KingdomId']);
 
-		$sql = "SELECT
+        $sql = "SELECT
 					p1.park_id  AS row_id,
 					p1.name     AS row_name,
 					p1.city     AS row_city,
@@ -2658,44 +4000,51 @@ class Report  extends Ork3 {
 					AND p2.longitude IS NOT NULL AND p2.longitude != 0
 				ORDER BY p1.name ASC, p2.name ASC";
 
-		$r = $this->db->query($sql);
+        $r = $this->db->query($sql);
 
-		$parks  = array();
-		$matrix = array();
+        $parks  = array();
+        $matrix = array();
 
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$row_id = $r->row_id;
-				$col_id = $r->col_id;
-				if (!isset($parks[$row_id])) {
-					$parks[$row_id] = array(
-						'Name'     => $r->row_name,
-						'City'     => $r->row_city,
-						'Province' => $r->row_province,
-					);
-				}
-				if ($row_id !== $col_id) $matrix[$row_id][$col_id] = floatval($r->miles);
-			}
-		}
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $row_id = $r->row_id;
+                $col_id = $r->col_id;
+                if (!isset($parks[$row_id])) {
+                    $parks[$row_id] = array(
+                        'Name'     => $r->row_name,
+                        'City'     => $r->row_city,
+                        'Province' => $r->row_province,
+                    );
+                }
+                if ($row_id !== $col_id) {
+                    $matrix[$row_id][$col_id] = floatval($r->miles);
+                }
+            }
+        }
 
-		return array('Parks' => $parks, 'Matrix' => $matrix);
-	}
+        return array('Parks' => $parks, 'Matrix' => $matrix);
+    }
 
-	public function GetClosestParks($request) {
-		$park_id = intval($request['ParkId']);
+    public function GetClosestParks($request)
+    {
+        $park_id = intval($request['ParkId']);
 
-		$origin_sql = "SELECT latitude, longitude, name FROM " . DB_PREFIX . "park WHERE park_id = '$park_id'";
-		$origin = $this->db->query($origin_sql);
-		if ($origin === false || $origin->size() == 0) return array('Parks' => array(), 'OriginPark' => null);
+        $origin_sql = "SELECT latitude, longitude, name FROM " . DB_PREFIX . "park WHERE park_id = '$park_id'";
+        $origin = $this->db->query($origin_sql);
+        if ($origin === false || $origin->size() == 0) {
+            return array('Parks' => array(), 'OriginPark' => null);
+        }
 
-		$origin->next();
-		$lat = floatval($origin->latitude);
-		$lng = floatval($origin->longitude);
-		$origin_name = $origin->name;
+        $origin->next();
+        $lat = floatval($origin->latitude);
+        $lng = floatval($origin->longitude);
+        $origin_name = $origin->name;
 
-		if ($lat == 0 && $lng == 0) return array('Parks' => array(), 'OriginPark' => $origin_name);
+        if ($lat == 0 && $lng == 0) {
+            return array('Parks' => array(), 'OriginPark' => $origin_name);
+        }
 
-		$sql = "SELECT
+        $sql = "SELECT
 					p.park_id,
 					p.name AS park_name,
 					k.kingdom_id,
@@ -2714,28 +4063,31 @@ class Report  extends Ork3 {
 				ORDER BY miles ASC
 				LIMIT 25";
 
-		$r = $this->db->query($sql);
-		$response = array('Parks' => array(), 'OriginPark' => $origin_name);
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$response['Parks'][] = array(
-					'ParkId'      => $r->park_id,
-					'ParkName'    => $r->park_name,
-					'KingdomId'   => $r->kingdom_id,
-					'KingdomName' => $r->kingdom_name,
-					'City'        => $r->city,
-					'Province'    => $r->province,
-					'Miles'       => $r->miles,
-				);
-			}
-		}
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        $response = array('Parks' => array(), 'OriginPark' => $origin_name);
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $response['Parks'][] = array(
+                    'ParkId'      => $r->park_id,
+                    'ParkName'    => $r->park_name,
+                    'KingdomId'   => $r->kingdom_id,
+                    'KingdomName' => $r->kingdom_name,
+                    'City'        => $r->city,
+                    'Province'    => $r->province,
+                    'Miles'       => $r->miles,
+                );
+            }
+        }
+        return $response;
+    }
 
-	public function RecentParkAttendees($request) {
-		$park_id = intval($request['ParkId']);
-		if (!valid_id($park_id)) return ['Status' => InvalidParameter(), 'Attendees' => []];
-		$sql = "SELECT a.mundane_id, m.persona,
+    public function RecentParkAttendees($request)
+    {
+        $park_id = intval($request['ParkId']);
+        if (!valid_id($park_id)) {
+            return ['Status' => InvalidParameter(), 'Attendees' => []];
+        }
+        $sql = "SELECT a.mundane_id, m.persona,
 					MAX(a.date) AS last_signin,
 					SUBSTRING_INDEX(GROUP_CONCAT(a.class_id ORDER BY a.date DESC, a.attendance_id DESC SEPARATOR ','), ',', 1) AS class_id,
 					SUBSTRING_INDEX(GROUP_CONCAT(c.name    ORDER BY a.date DESC, a.attendance_id DESC SEPARATOR ','), ',', 1) AS class_name
@@ -2748,28 +4100,29 @@ class Report  extends Ork3 {
 				  AND m.mundane_id IS NOT NULL
 				GROUP BY a.mundane_id, m.persona
 				ORDER BY m.persona";
-		$r = $this->db->query($sql);
-		$attendees = [];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$attendees[] = [
-					'MundaneId'  => (int)$r->mundane_id,
-					'Persona'    => $r->persona,
-					'ClassId'    => (int)$r->class_id,
-					'ClassName'  => $r->class_name,
-					'LastSignIn' => $r->last_signin,
-				];
-			}
-		}
-		return ['Status' => Success(), 'Attendees' => $attendees];
-	}
+        $r = $this->db->query($sql);
+        $attendees = [];
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $attendees[] = [
+                    'MundaneId'  => (int)$r->mundane_id,
+                    'Persona'    => $r->persona,
+                    'ClassId'    => (int)$r->class_id,
+                    'ClassName'  => $r->class_name,
+                    'LastSignIn' => $r->last_signin,
+                ];
+            }
+        }
+        return ['Status' => Success(), 'Attendees' => $attendees];
+    }
 
-	public function KingdomOfficerDirectory($request) {
-		$kingdom_id = valid_id($request['KingdomId']) ? (int)$request['KingdomId'] : null;
+    public function KingdomOfficerDirectory($request)
+    {
+        $kingdom_id = valid_id($request['KingdomId']) ? (int)$request['KingdomId'] : null;
 
-		if ($kingdom_id) {
-			// Park-scoped: officers for each park within a kingdom
-			$sql = "SELECT
+        if ($kingdom_id) {
+            // Park-scoped: officers for each park within a kingdom
+            $sql = "SELECT
 						p.park_id    AS entity_id,
 						p.name       AS entity_name,
 						MAX(CASE WHEN o.role = 'Monarch'        THEN m.persona    END) AS monarch_persona,
@@ -2804,10 +4157,10 @@ class Report  extends Ork3 {
 						AND p.active = 'Active'
 					GROUP BY p.park_id, p.name
 					ORDER BY p.name";
-			$mode = 'parks';
-		} else {
-			// Top-level: kingdom-seat officers for all active kingdoms
-			$sql = "SELECT
+            $mode = 'parks';
+        } else {
+            // Top-level: kingdom-seat officers for all active kingdoms
+            $sql = "SELECT
 						k.kingdom_id AS entity_id,
 						k.name       AS entity_name,
 						MAX(CASE WHEN o.role = 'Monarch'        THEN m.persona    END) AS monarch_persona,
@@ -2843,62 +4196,64 @@ class Report  extends Ork3 {
 						AND k.name != 'The Freeholds of Amtgard'
 					GROUP BY k.kingdom_id, k.name
 					ORDER BY k.name";
-			$mode = 'kingdoms';
-		}
+            $mode = 'kingdoms';
+        }
 
-		$r = $this->db->query($sql);
-		$response = ['Status' => Success(), 'Mode' => $mode, 'Kingdoms' => []];
-		if ($r === false) {
-			$response['Status'] = InvalidParameter();
-		} elseif ($r->size() > 0) {
-			while ($r->next()) {
-				$response['Kingdoms'][] = [
-					'KingdomId'      => $r->entity_id,
-					'KingdomName'    => $r->entity_name,
-					'MonarchPersona'  => $r->monarch_persona,
-					'MonarchId'       => $r->monarch_id,
-					'MonarchGiven'    => $r->monarch_given,
-					'MonarchSurname'  => $r->monarch_surname,
-					'MonarchEmail'    => $r->monarch_email,
-					'RegentPersona'   => $r->regent_persona,
-					'RegentId'        => $r->regent_id,
-					'RegentGiven'     => $r->regent_given,
-					'RegentSurname'   => $r->regent_surname,
-					'RegentEmail'     => $r->regent_email,
-					'PMPersona'       => $r->pm_persona,
-					'PMId'            => $r->pm_id,
-					'PMGiven'         => $r->pm_given,
-					'PMSurname'       => $r->pm_surname,
-					'PMEmail'         => $r->pm_email,
-					'ChampionPersona' => $r->champion_persona,
-					'ChampionId'      => $r->champion_id,
-					'ChampionGiven'   => $r->champion_given,
-					'ChampionSurname' => $r->champion_surname,
-					'ChampionEmail'   => $r->champion_email,
-					'GMRPersona'      => $r->gmr_persona,
-					'GMRId'           => $r->gmr_id,
-					'GMRGiven'        => $r->gmr_given,
-					'GMRSurname'      => $r->gmr_surname,
-					'GMREmail'        => $r->gmr_email,
-				];
-			}
-		}
-		return $response;
-	}
-	public function EventAttendanceReport($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false)
-			return $cache;
+        $r = $this->db->query($sql);
+        $response = ['Status' => Success(), 'Mode' => $mode, 'Kingdoms' => []];
+        if ($r === false) {
+            $response['Status'] = InvalidParameter();
+        } elseif ($r->size() > 0) {
+            while ($r->next()) {
+                $response['Kingdoms'][] = [
+                    'KingdomId'      => $r->entity_id,
+                    'KingdomName'    => $r->entity_name,
+                    'MonarchPersona'  => $r->monarch_persona,
+                    'MonarchId'       => $r->monarch_id,
+                    'MonarchGiven'    => $r->monarch_given,
+                    'MonarchSurname'  => $r->monarch_surname,
+                    'MonarchEmail'    => $r->monarch_email,
+                    'RegentPersona'   => $r->regent_persona,
+                    'RegentId'        => $r->regent_id,
+                    'RegentGiven'     => $r->regent_given,
+                    'RegentSurname'   => $r->regent_surname,
+                    'RegentEmail'     => $r->regent_email,
+                    'PMPersona'       => $r->pm_persona,
+                    'PMId'            => $r->pm_id,
+                    'PMGiven'         => $r->pm_given,
+                    'PMSurname'       => $r->pm_surname,
+                    'PMEmail'         => $r->pm_email,
+                    'ChampionPersona' => $r->champion_persona,
+                    'ChampionId'      => $r->champion_id,
+                    'ChampionGiven'   => $r->champion_given,
+                    'ChampionSurname' => $r->champion_surname,
+                    'ChampionEmail'   => $r->champion_email,
+                    'GMRPersona'      => $r->gmr_persona,
+                    'GMRId'           => $r->gmr_id,
+                    'GMRGiven'        => $r->gmr_given,
+                    'GMRSurname'      => $r->gmr_surname,
+                    'GMREmail'        => $r->gmr_email,
+                ];
+            }
+        }
+        return $response;
+    }
+    public function EventAttendanceReport($request)
+    {
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 300)) !== false) {
+            return $cache;
+        }
 
-		if (valid_id($request['KingdomId'])) {
-			$where = 'AND e.kingdom_id = ' . (int)$request['KingdomId'];
-		} elseif (valid_id($request['ParkId'])) {
-			$where = 'AND e.park_id = ' . (int)$request['ParkId'];
-		} else {
-			return array('Status' => InvalidParameter(), 'Events' => array());
-		}
+        if (valid_id($request['KingdomId'])) {
+            $where = 'AND e.kingdom_id = ' . (int)$request['KingdomId'];
+        } elseif (valid_id($request['ParkId'])) {
+            $where = 'AND e.park_id = ' . (int)$request['ParkId'];
+        } else {
+            return array('Status' => InvalidParameter(), 'Events' => array());
+        }
 
-		$sql = "SELECT
+        $sql = "SELECT
 					e.event_id,
 					e.name AS event_name,
 					e.has_heraldry,
@@ -2922,45 +4277,46 @@ class Report  extends Ork3 {
 				ORDER BY cd.event_start DESC
 				LIMIT 1000";
 
-		$r = $this->db->query($sql);
-		$response = array();
-		if ($r !== false) {
-			$response['Events'] = array();
-			if ($r->size() > 0) {
-				while ($r->next()) {
-					$response['Events'][] = array(
-						'EventId'         => (int)$r->event_id,
-						'EventName'       => $r->event_name,
-						'HasHeraldry'     => (int)$r->has_heraldry,
-						'ParkId'          => (int)$r->park_id,
-						'ParkName'        => $r->park_name,
-						'ParkAbbr'        => $r->park_abbr,
-						'DetailId'        => (int)$r->event_calendardetail_id,
-						'EventStart'      => $r->event_start,
-						'EventEnd'        => $r->event_end,
-						'Price'           => $r->price,
-						'City'            => $r->city,
-						'Province'        => $r->province,
-						'AttendanceCount' => (int)$r->attendance_count,
-						'RsvpCount'       => (int)$r->rsvp_count,
-					);
-				}
-			}
-			$response['Status'] = Success();
-		} else {
-			$response['Status'] = InvalidParameter();
-			$response['Events'] = array();
-		}
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        $r = $this->db->query($sql);
+        $response = array();
+        if ($r !== false) {
+            $response['Events'] = array();
+            if ($r->size() > 0) {
+                while ($r->next()) {
+                    $response['Events'][] = array(
+                        'EventId'         => (int)$r->event_id,
+                        'EventName'       => $r->event_name,
+                        'HasHeraldry'     => (int)$r->has_heraldry,
+                        'ParkId'          => (int)$r->park_id,
+                        'ParkName'        => $r->park_name,
+                        'ParkAbbr'        => $r->park_abbr,
+                        'DetailId'        => (int)$r->event_calendardetail_id,
+                        'EventStart'      => $r->event_start,
+                        'EventEnd'        => $r->event_end,
+                        'Price'           => $r->price,
+                        'City'            => $r->city,
+                        'Province'        => $r->province,
+                        'AttendanceCount' => (int)$r->attendance_count,
+                        'RsvpCount'       => (int)$r->rsvp_count,
+                    );
+                }
+            }
+            $response['Status'] = Success();
+        } else {
+            $response['Status'] = InvalidParameter();
+            $response['Events'] = array();
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function BeltlineData($request) {
-		$kingdom_id = intval($request['KingdomId']);
-		if (!valid_id($kingdom_id)) {
-			return array('Status' => InvalidParameter('KingdomId required'), 'Relationships' => array(), 'Knights' => array());
-		}
+    public function BeltlineData($request)
+    {
+        $kingdom_id = intval($request['KingdomId']);
+        if (!valid_id($kingdom_id)) {
+            return array('Status' => InvalidParameter('KingdomId required'), 'Relationships' => array(), 'Knights' => array());
+        }
 
-		$sql = "SELECT
+        $sql = "SELECT
 				ma.mundane_id AS recipient_id,
 				m.persona AS recipient_persona,
 				ma.given_by_id AS giver_id,
@@ -2979,26 +4335,26 @@ class Report  extends Ork3 {
 				AND (ma.revoked = 0 OR ma.revoked IS NULL)
 			ORDER BY m.persona";
 
-		logtrace('BeltlineData', $sql);
-		$r = $this->db->query($sql);
-		$relationships = array();
-		if ($r !== false && $r->size() > 0) {
-			do {
-				$relationships[] = array(
-					'RecipientId'      => $r->recipient_id,
-					'RecipientPersona' => $r->recipient_persona,
-					'GiverId'          => $r->giver_id,
-					'GiverPersona'     => $r->giver_persona,
-					'TitleName'        => $r->title_name,
-					'Peerage'          => $r->peerage,
-					'Date'             => $r->date,
-				);
-			} while ($r->next());
-		}
+        logtrace('BeltlineData', $sql);
+        $r = $this->db->query($sql);
+        $relationships = array();
+        if ($r !== false && $r->size() > 0) {
+            do {
+                $relationships[] = array(
+                    'RecipientId'      => $r->recipient_id,
+                    'RecipientPersona' => $r->recipient_persona,
+                    'GiverId'          => $r->giver_id,
+                    'GiverPersona'     => $r->giver_persona,
+                    'TitleName'        => $r->title_name,
+                    'Peerage'          => $r->peerage,
+                    'Date'             => $r->date,
+                );
+            } while ($r->next());
+        }
 
-		// Knights for the dropdown — kingdom-scoped so the selector stays useful.
-		$kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id)));
-		$knights_sql = "SELECT DISTINCT
+        // Knights for the dropdown — kingdom-scoped so the selector stays useful.
+        $kidList = implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id)));
+        $knights_sql = "SELECT DISTINCT
 				m.mundane_id,
 				m.persona
 			FROM " . DB_PREFIX . "awards ma
@@ -3010,20 +4366,20 @@ class Report  extends Ork3 {
 				AND (ma.revoked = 0 OR ma.revoked IS NULL)
 			ORDER BY m.persona";
 
-		logtrace('BeltlineData knights', $knights_sql);
-		$kr = $this->db->query($knights_sql);
-		$knights = array();
-		if ($kr !== false && $kr->size() > 0) {
-			do {
-				$knights[] = array(
-					'MundaneId' => $kr->mundane_id,
-					'Persona'   => $kr->persona,
-				);
-			} while ($kr->next());
-		}
+        logtrace('BeltlineData knights', $knights_sql);
+        $kr = $this->db->query($knights_sql);
+        $knights = array();
+        if ($kr !== false && $kr->size() > 0) {
+            do {
+                $knights[] = array(
+                    'MundaneId' => $kr->mundane_id,
+                    'Persona'   => $kr->persona,
+                );
+            } while ($kr->next());
+        }
 
-		// All knight awards globally — IDs for the crown icon + type names for display.
-		$all_knights_sql = "SELECT ma.mundane_id, COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS knight_name
+        // All knight awards globally — IDs for the crown icon + type names for display.
+        $all_knights_sql = "SELECT ma.mundane_id, COALESCE(NULLIF(ma.custom_name,''), ka.name, a.name) AS knight_name
 			FROM " . DB_PREFIX . "awards ma
 				JOIN " . DB_PREFIX . "award a ON a.award_id = ma.award_id
 				LEFT JOIN " . DB_PREFIX . "award alias ON alias.award_id = ma.alias_award_id
@@ -3031,50 +4387,54 @@ class Report  extends Ork3 {
 			WHERE COALESCE(alias.peerage, a.peerage) = 'Knight'
 				AND (ma.revoked = 0 OR ma.revoked IS NULL)";
 
-		$akr = $this->db->query($all_knights_sql);
-		$all_knight_ids = array();
-		$knight_types   = array(); // mundane_id => [type, ...]
-		if ($akr !== false && $akr->size() > 0) {
-			do {
-				$mid  = (int)$akr->mundane_id;
-				$name = $akr->knight_name;
-				// Strip common "Knight of (the) " prefixes to get just the type
-				$type = preg_replace('/^knight(?:hood)? of (?:the )?/i', '', $name);
-				if (strcasecmp($type, $name) === 0) $type = $name; // no prefix matched, use as-is
-				$all_knight_ids[] = $mid;
-				if (!in_array($type, $knight_types[$mid] ?? array())) {
-					$knight_types[$mid][] = $type;
-				}
-			} while ($akr->next());
-			$all_knight_ids = array_unique($all_knight_ids);
-		}
+        $akr = $this->db->query($all_knights_sql);
+        $all_knight_ids = array();
+        $knight_types   = array(); // mundane_id => [type, ...]
+        if ($akr !== false && $akr->size() > 0) {
+            do {
+                $mid  = (int)$akr->mundane_id;
+                $name = $akr->knight_name;
+                // Strip common "Knight of (the) " prefixes to get just the type
+                $type = preg_replace('/^knight(?:hood)? of (?:the )?/i', '', $name);
+                if (strcasecmp($type, $name) === 0) {
+                    $type = $name;
+                } // no prefix matched, use as-is
+                $all_knight_ids[] = $mid;
+                if (!in_array($type, $knight_types[$mid] ?? array())) {
+                    $knight_types[$mid][] = $type;
+                }
+            } while ($akr->next());
+            $all_knight_ids = array_unique($all_knight_ids);
+        }
 
-		return array(
-			'Status'        => Success(),
-			'Relationships' => $relationships,
-			'Knights'       => $knights,
-			'AllKnightIds'  => array_values($all_knight_ids),
-			'KnightTypes'   => $knight_types,
-		);
-	}
+        return array(
+            'Status'        => Success(),
+            'Relationships' => $relationships,
+            'Knights'       => $knights,
+            'AllKnightIds'  => array_values($all_knight_ids),
+            'KnightTypes'   => $knight_types,
+        );
+    }
 
 
-	public function GetPlayerStatusReconciliation($request) {
-		$key = Ork3::$Lib->ghettocache->key($request);
-		if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 120)) !== false)
-			return $cache;
+    public function GetPlayerStatusReconciliation($request)
+    {
+        $key = Ork3::$Lib->ghettocache->key($request);
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 120)) !== false) {
+            return $cache;
+        }
 
-		$location = '';
-		if (valid_id($request['ParkId'])) {
-			$location = " and m.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
-		} else if (valid_id($request['KingdomId'])) {
-			$location = " and m.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
-		} else {
-			return array('Status' => InvalidParameter());
-		}
+        $location = '';
+        if (valid_id($request['ParkId'])) {
+            $location = " and m.park_id = '" . mysql_real_escape_string($request['ParkId']) . "'";
+        } elseif (valid_id($request['KingdomId'])) {
+            $location = " and m.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($request['KingdomId']))) . ")";
+        } else {
+            return array('Status' => InvalidParameter());
+        }
 
-		// Inactive players WITH a sign-in in the past 6 months
-		$sql_inactive_with_attendance = "
+        // Inactive players WITH a sign-in in the past 6 months
+        $sql_inactive_with_attendance = "
 			SELECT m.mundane_id, m.persona, m.given_name, m.surname,
 				p.park_id, p.name AS park_name,
 				k.kingdom_id, k.name AS kingdom_name,
@@ -3089,28 +4449,28 @@ class Report  extends Ork3 {
 			GROUP BY m.mundane_id
 			ORDER BY p.name, m.persona";
 
-		$this->db->Clear();
-		$r1 = $this->db->query($sql_inactive_with_attendance);
-		$inactive_with_attendance = array();
-		if ($r1 !== false && $r1->size() > 0) {
-			while ($r1->next()) {
-				$inactive_with_attendance[] = array(
-					'MundaneId'     => $r1->mundane_id,
-					'Persona'       => $r1->persona,
-					'GivenName'     => $r1->given_name,
-					'Surname'       => $r1->surname,
-					'ParkId'        => $r1->park_id,
-					'ParkName'      => $r1->park_name,
-					'KingdomId'     => $r1->kingdom_id,
-					'KingdomName'   => $r1->kingdom_name,
-					'LastSignIn'    => $r1->last_signin,
-					'SignInCount'   => $r1->signin_count_6mo,
-				);
-			}
-		}
+        $this->db->Clear();
+        $r1 = $this->db->query($sql_inactive_with_attendance);
+        $inactive_with_attendance = array();
+        if ($r1 !== false && $r1->size() > 0) {
+            while ($r1->next()) {
+                $inactive_with_attendance[] = array(
+                    'MundaneId'     => $r1->mundane_id,
+                    'Persona'       => $r1->persona,
+                    'GivenName'     => $r1->given_name,
+                    'Surname'       => $r1->surname,
+                    'ParkId'        => $r1->park_id,
+                    'ParkName'      => $r1->park_name,
+                    'KingdomId'     => $r1->kingdom_id,
+                    'KingdomName'   => $r1->kingdom_name,
+                    'LastSignIn'    => $r1->last_signin,
+                    'SignInCount'   => $r1->signin_count_6mo,
+                );
+            }
+        }
 
-		// Active players with NO sign-in in the past 24 months
-		$sql_active_no_attendance = "
+        // Active players with NO sign-in in the past 24 months
+        $sql_active_no_attendance = "
 			SELECT m.mundane_id, m.persona, m.given_name, m.surname,
 				p.park_id, p.name AS park_name,
 				k.kingdom_id, k.name AS kingdom_name,
@@ -3128,226 +4488,290 @@ class Report  extends Ork3 {
 				)
 			ORDER BY p.name, m.persona";
 
-		$this->db->Clear();
-		$r2 = $this->db->query($sql_active_no_attendance);
-		$active_no_attendance = array();
-		if ($r2 !== false && $r2->size() > 0) {
-			while ($r2->next()) {
-				$active_no_attendance[] = array(
-					'MundaneId'     => $r2->mundane_id,
-					'Persona'       => $r2->persona,
-					'GivenName'     => $r2->given_name,
-					'Surname'       => $r2->surname,
-					'ParkId'        => $r2->park_id,
-					'ParkName'      => $r2->park_name,
-					'KingdomId'     => $r2->kingdom_id,
-					'KingdomName'   => $r2->kingdom_name,
-					'LastSignIn'    => $r2->last_signin,
-					'ParkMemberSince' => $r2->park_member_since,
-				);
-			}
-		}
+        $this->db->Clear();
+        $r2 = $this->db->query($sql_active_no_attendance);
+        $active_no_attendance = array();
+        if ($r2 !== false && $r2->size() > 0) {
+            while ($r2->next()) {
+                $active_no_attendance[] = array(
+                    'MundaneId'     => $r2->mundane_id,
+                    'Persona'       => $r2->persona,
+                    'GivenName'     => $r2->given_name,
+                    'Surname'       => $r2->surname,
+                    'ParkId'        => $r2->park_id,
+                    'ParkName'      => $r2->park_name,
+                    'KingdomId'     => $r2->kingdom_id,
+                    'KingdomName'   => $r2->kingdom_name,
+                    'LastSignIn'    => $r2->last_signin,
+                    'ParkMemberSince' => $r2->park_member_since,
+                );
+            }
+        }
 
-		$response = array(
-			'Status' => Success(),
-			'InactiveWithAttendance' => $inactive_with_attendance,
-			'ActiveNoAttendance' => $active_no_attendance,
-		);
-		return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
-	}
+        $response = array(
+            'Status' => Success(),
+            'InactiveWithAttendance' => $inactive_with_attendance,
+            'ActiveNoAttendance' => $active_no_attendance,
+        );
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $response);
+    }
 
-	public function SetPlayerActiveStatus($request) {
-		$requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
-		if (!valid_id($requester_id)) return NoAuthorization();
+    public function SetPlayerActiveStatus($request)
+    {
+        $requester_id = Ork3::$Lib->authorization->IsAuthorized($request['Token']);
+        if (!valid_id($requester_id)) {
+            return NoAuthorization();
+        }
 
-		$mundane_id = (int)$request['MundaneId'];
-		$active = (int)$request['Active'];
-		if (!$mundane_id || !\in_array($active, [0, 1])) return InvalidParameter();
+        $mundane_id = (int)$request['MundaneId'];
+        $active = (int)$request['Active'];
+        if (!$mundane_id || !\in_array($active, [0, 1])) {
+            return InvalidParameter();
+        }
 
-		$mundane = new yapo($this->db, DB_PREFIX . 'mundane');
-		$mundane->mundane_id = $mundane_id;
-		if (!$mundane->find()) return InvalidParameter('Player not found.');
+        $mundane = new yapo($this->db, DB_PREFIX . 'mundane');
+        $mundane->mundane_id = $mundane_id;
+        if (!$mundane->find()) {
+            return InvalidParameter('Player not found.');
+        }
 
-		// Auth check: requester must have AUTH_PARK + AUTH_CREATE on the player's park
-		if (!Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_PARK, $mundane->park_id, AUTH_CREATE)
-			&& !Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_KINGDOM, $mundane->kingdom_id, AUTH_EDIT)
-			&& !Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
-			return NoAuthorization();
-		}
+        // Auth check: requester must have AUTH_PARK + AUTH_CREATE on the player's park
+        if (!Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_PARK, $mundane->park_id, AUTH_CREATE)
+            && !Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_KINGDOM, $mundane->kingdom_id, AUTH_EDIT)
+            && !Ork3::$Lib->authorization->HasAuthority($requester_id, AUTH_ADMIN, 0, AUTH_EDIT)) {
+            return NoAuthorization();
+        }
 
-		$mundane->active = $active;
-		$mundane->save();
-		return Success();
-	}
+        $mundane->active = $active;
+        $mundane->save();
+        Ork3::$Lib->player->bustPlayerProfileCaches($mundane_id);
+        $this->bustPlayerStatusReconciliationCaches((int) $mundane->park_id, (int) $mundane->kingdom_id);
+        return Success();
+    }
 
-	public function GetVotingEligible($request) {
-		$kingdom_id     = (int)($request['KingdomId'] ?? 0);
-		$park_id        = valid_id($request['ParkId'] ?? 0)     ? (int)$request['ParkId']              : 0;
-		$mundane_id     = valid_id($request['MundaneId'] ?? 0)  ? (int)$request['MundaneId']           : 0;
-		$att_req        = isset($request['AttendanceRequired'])  ? (int)$request['AttendanceRequired']  : 6;
-		$months_win     = isset($request['MonthsWindow'])        ? (int)$request['MonthsWindow']        : 6;
-		$min_mem_mo     = isset($request['MinMembershipMonths']) ? (int)$request['MinMembershipMonths'] : 6;
-		$att_mode           = $request['AttendanceMode'] ?? 'weeks';
-		if (!in_array($att_mode, ['count', 'days', 'weeks'])) $att_mode = 'weeks';
-		$week_offset             = isset($request['WeekOffset'])             ? (int)$request['WeekOffset']             : 0;
-		$province_mode           = !empty($request['ProvinceMode']);
-		$kingdom_evt_bonus       = !empty($request['KingdomEventBonus']);
-		$active_knight_threshold  = isset($request['ActiveKnightThreshold'])  ? (int)$request['ActiveKnightThreshold']  : 0;
-		$active_member_threshold  = isset($request['ActiveMemberThreshold'])  ? (int)$request['ActiveMemberThreshold']  : 0;
-		$exclude_online           = !empty($request['ExcludeOnline']);
-		$all_kingdoms             = !empty($request['AllKingdoms']); // count attendance from any kingdom
-		$days_window             = isset($request['DaysWindow'])              ? (int)$request['DaysWindow']              : 0;
-		$min_age                 = isset($request['MinAge'])                  ? (int)$request['MinAge']                  : 0;
-		$max_credits_per_event   = isset($request['MaxCreditsPerEvent'])      ? (int)$request['MaxCreditsPerEvent']      : 0;
-		$max_outside_kingdom_creds = isset($request['MaxOutsideKingdomCredits']) ? (int)$request['MaxOutsideKingdomCredits'] : 0;
-		$week_snap               = !empty($request['WeekSnap']); // snap window start to week boundary even in non-weeks modes
-		$membership_mode         = $request['MembershipMode'] ?? 'park_member_since'; // 'first_attendance' uses MIN(attendance.date) within the kingdom
-		$show_event_count        = !empty($request['ShowEventCount']); // emit a separate count of event-based sign-ins (informational only, not excluded)
-		$exclude_events          = !empty($request['ExcludeEvents']);  // count only non-event (park-day) sign-ins
-		$waiver_age_months       = isset($request['WaiverAgeMonths']) ? (int)$request['WaiverAgeMonths'] : 0; // months waiver must be on file — cannot auto-verify, shown as caveat only
+    public function GetVotingEligible($request)
+    {
+        $kingdom_id     = (int)($request['KingdomId'] ?? 0);
+        $park_id        = valid_id($request['ParkId'] ?? 0) ? (int)$request['ParkId'] : 0;
+        $mundane_id     = valid_id($request['MundaneId'] ?? 0) ? (int)$request['MundaneId'] : 0;
 
-		// Compute start date.
-		// display_start_date: shown in the report header (raw date for DaysWindow, snapped for MonthsWindow).
-		// start_date: used in SQL — always snapped to week start when att_mode=weeks so the full
-		//   starting week is included (e.g. 180d back lands on Sat → SQL starts Mon of that week).
-		if (!empty($request['StartDate'])) {
-			$start_date = $display_start_date = mysql_real_escape_string($request['StartDate']);
-		} else {
-			$_raw_ts         = $days_window > 0 ? strtotime("-{$days_window} days")
-			                                    : strtotime("-{$months_win} months");
-			$display_start_date = date('Y-m-d', $_raw_ts);
-			// Snap SQL start to the first day of the Amtgard week when counting weeks,
-			// or when WeekSnap=true (kingdoms that count sign-ins/days but align their
-			// window to the week boundary for consistency with the Amtgard calendar).
-			if ($att_mode === 'weeks' || $week_snap) {
-				$_week_start_iso = $week_offset + 1;                    // 1=Mon, 2=Tue, 7=Sun …
-				$_dow            = (int)date('N', $_raw_ts);             // 1=Mon … 7=Sun
-				$_days_back      = (($_dow - $_week_start_iso) + 7) % 7;
-				$start_date      = date('Y-m-d', $_raw_ts - $_days_back * 86400);
-				// Always show the snapped week-start so the "Attendance from" date
-				// matches exactly what the SQL counts from.
-				$display_start_date = $start_date;
-			} else {
-				$start_date = $display_start_date;
-			}
-		}
+        // T-RPT-04: backend-owned voting rules when caller did not pass rule flags.
+        if ($kingdom_id > 0 && !isset($request['AttendanceMode'])) {
+            $storedRules = VotingRules::rulesForKingdom($kingdom_id);
+            if ($storedRules !== null) {
+                $request = array_merge($storedRules, $request);
+            }
+        }
 
-		// If only ParkId given, derive kingdom from the park record
-		if (!$kingdom_id && $park_id) {
-			$pr = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = $park_id LIMIT 1");
-			if ($pr && $pr->size() > 0) { $pr->next(); $kingdom_id = (int)$pr->kingdom_id; }
-		}
-		if (!$kingdom_id) return ['Players' => [], 'AttendanceRequired' => $att_req, 'MonthsWindow' => $months_win, 'MinMembershipMonths' => $min_mem_mo, 'ProvinceMode' => $province_mode];
+        $att_req        = isset($request['AttendanceRequired']) ? (int)$request['AttendanceRequired'] : 6;
+        $months_win     = isset($request['MonthsWindow']) ? (int)$request['MonthsWindow'] : 6;
+        $min_mem_mo     = isset($request['MinMembershipMonths']) ? (int)$request['MinMembershipMonths'] : 6;
+        $att_mode           = $request['AttendanceMode'] ?? 'weeks';
+        if (!in_array($att_mode, ['count', 'days', 'weeks'])) {
+            $att_mode = 'weeks';
+        }
+        $week_offset             = isset($request['WeekOffset']) ? (int)$request['WeekOffset'] : 0;
+        $province_mode           = !empty($request['ProvinceMode']);
+        $kingdom_evt_bonus       = !empty($request['KingdomEventBonus']);
+        $active_knight_threshold  = isset($request['ActiveKnightThreshold']) ? (int)$request['ActiveKnightThreshold'] : 0;
+        $active_member_threshold  = isset($request['ActiveMemberThreshold']) ? (int)$request['ActiveMemberThreshold'] : 0;
+        $exclude_online           = !empty($request['ExcludeOnline']); // resolved from the kingdom setting below unless passed
+        $all_kingdoms             = !empty($request['AllKingdoms']); // count attendance from any kingdom
+        $days_window             = isset($request['DaysWindow']) ? (int)$request['DaysWindow'] : 0;
+        $min_age                 = isset($request['MinAge']) ? (int)$request['MinAge'] : 0;
+        $max_credits_per_event   = isset($request['MaxCreditsPerEvent']) ? (int)$request['MaxCreditsPerEvent'] : 0;
+        $max_outside_kingdom_creds = isset($request['MaxOutsideKingdomCredits']) ? (int)$request['MaxOutsideKingdomCredits'] : 0;
+        $week_snap               = !empty($request['WeekSnap']); // snap window start to week boundary even in non-weeks modes
+        $membership_mode         = $request['MembershipMode'] ?? 'park_member_since'; // 'first_attendance' uses MIN(attendance.date) within the kingdom
+        $show_event_count        = !empty($request['ShowEventCount']); // emit a separate count of event-based sign-ins (informational only, not excluded)
+        $exclude_events          = !empty($request['ExcludeEvents']);  // count only non-event (park-day) sign-ins
+        $waiver_age_months       = isset($request['WaiverAgeMonths']) ? (int)$request['WaiverAgeMonths'] : 0; // months waiver must be on file — cannot auto-verify, shown as caveat only
+        $min_distinct_months     = isset($request['MinDistinctMonths']) ? (int)$request['MinDistinctMonths'] : 0; // the counted sign-ins must fall in at least this many different calendar months
+        $dues_home_park_only     = !empty($request['DuesHomeParkOnly']); // dues must be paid at the player's home park, not merely somewhere in the kingdom (Freeholds)
+        $office_counts_as_dues   = !empty($request['OfficeCountsAsDues']); // holding any current Kingdom or park office stands in for dues (Blackspire)
+        $require_kingdom_event   = !empty($request['RequireKingdomEvent']); // at least one counted sign-in must be at a Kingdom-sponsored event (ork_event.park_id = 0) (Blackspire)
 
-		$park_clause    = $park_id    ? " AND m.park_id    = $park_id"    : '';
-		$mundane_clause = $mundane_id ? " AND m.mundane_id = $mundane_id" : '';
+        // Compute start date.
+        // display_start_date: shown in the report header (raw date for DaysWindow, snapped for MonthsWindow).
+        // start_date: used in SQL — always snapped to week start when att_mode=weeks so the full
+        //   starting week is included (e.g. 180d back lands on Sat → SQL starts Mon of that week).
+        if (!empty($request['StartDate'])) {
+            $start_date = $display_start_date = mysql_real_escape_string($request['StartDate']);
+        } else {
+            $_raw_ts         = $days_window > 0 ? strtotime("-{$days_window} days")
+                                                : strtotime("-{$months_win} months");
+            $display_start_date = date('Y-m-d', $_raw_ts);
+            // Snap SQL start to the first day of the Amtgard week when counting weeks,
+            // or when WeekSnap=true (kingdoms that count sign-ins/days but align their
+            // window to the week boundary for consistency with the Amtgard calendar).
+            if ($att_mode === 'weeks' || $week_snap) {
+                $_week_start_iso = $week_offset + 1;                    // 1=Mon, 2=Tue, 7=Sun …
+                $_dow            = (int)date('N', $_raw_ts);             // 1=Mon … 7=Sun
+                $_days_back      = (($_dow - $_week_start_iso) + 7) % 7;
+                $start_date      = date('Y-m-d', $_raw_ts - $_days_back * 86400);
+                // Always show the snapped week-start so the "Attendance from" date
+                // matches exactly what the SQL counts from.
+                $display_start_date = $start_date;
+            } else {
+                $start_date = $display_start_date;
+            }
+        }
 
-		// Single-player calls (Player profile voting badge) only need attendance for one mundane_id.
-		// Without this push-down, every LEFT JOIN subquery aggregates over the whole kingdom's
-		// attendance and then joins to find one row — turning a single-player check into a
-		// kingdom-wide report.
-		$single_att_clause = $mundane_id ? " AND a.mundane_id = $mundane_id" : '';
+        // If only ParkId given, derive kingdom from the park record
+        if (!$kingdom_id && $park_id) {
+            $pr = $this->db->query("SELECT kingdom_id FROM " . DB_PREFIX . "park WHERE park_id = $park_id LIMIT 1");
+            if ($pr && $pr->size() > 0) {
+                $pr->next();
+                $kingdom_id = (int)$pr->kingdom_id;
+            }
+        }
+        if (!$kingdom_id) {
+            return ['Players' => [], 'AttendanceRequired' => $att_req, 'MonthsWindow' => $months_win, 'MinMembershipMonths' => $min_mem_mo, 'ProvinceMode' => $province_mode];
+        }
 
-		// Online exclusion: LEFT JOIN event + park inside attendance subqueries, filter out
-		// rows where the event name or park name contains 'Online' (case-insensitive).
-		// ExcludeEvents: restrict attendance to park-day sign-ins only (event_id = 0 or NULL).
-		$events_clause = $exclude_events ? "AND (a.event_id = 0 OR a.event_id IS NULL)" : '';
+        // The kingdom's CountOnlineAttendance setting decides online exclusion unless the caller
+        // passes ExcludeOnline. Independent of the stored-rule merge above (skipped when
+        // AttendanceMode is passed), and applied after a ParkId-only call has resolved its kingdom.
+        if (!array_key_exists('ExcludeOnline', $request)) {
+            $exclude_online = !Ork3::$Lib->kingdom->CountsOnlineAttendance($kingdom_id);
+        }
 
-		$online_join   = '';
-		$online_clause = '';
-		if ($exclude_online) {
-			$online_join   = "LEFT JOIN " . DB_PREFIX . "event   _oe ON _oe.event_id = a.event_id AND a.event_id != 0
+        $park_clause    = $park_id ? " AND m.park_id    = $park_id" : '';
+        $mundane_clause = $mundane_id ? " AND m.mundane_id = $mundane_id" : '';
+
+        // Single-player calls (Player profile voting badge) only need attendance for one mundane_id.
+        // Without this push-down, every LEFT JOIN subquery aggregates over the whole kingdom's
+        // attendance and then joins to find one row — turning a single-player check into a
+        // kingdom-wide report.
+        $single_att_clause = $mundane_id ? " AND a.mundane_id = $mundane_id" : '';
+
+        // Online exclusion: drop rows flagged online, and (historical rows) rows whose event
+        // or park name contains 'Online' (case-insensitive) via LEFT JOINs inside the subqueries.
+        // ExcludeEvents: restrict attendance to park-day sign-ins only (event_id = 0 or NULL).
+        $events_clause = $exclude_events ? "AND (a.event_id = 0 OR a.event_id IS NULL)" : '';
+
+        $online_join   = '';
+        $online_clause = '';
+        if ($exclude_online) {
+            $online_join   = "LEFT JOIN " . DB_PREFIX . "event   _oe ON _oe.event_id = a.event_id AND a.event_id != 0
 					LEFT JOIN " . DB_PREFIX . "park    _op ON _op.park_id  = a.park_id";
-			// NULL-safe: a.park_id = 0 (kingdom events) yields NULL park name — allow those through.
-			// Only exclude when we can positively confirm 'Online' is in the name.
-			$online_clause = "AND (_oe.name IS NULL OR _oe.name NOT LIKE '%Online%')
+            // NULL-safe: a.park_id = 0 (kingdom events) yields NULL park name — allow those through.
+            // Only exclude when we can positively confirm 'Online' is in the name.
+            $online_clause = "AND a.online = 0
+					AND (_oe.name IS NULL OR _oe.name NOT LIKE '%Online%')
 					AND (_op.name IS NULL OR _op.name NOT LIKE '%Online%')";
-		}
+        }
 
-		$home_park_only = !empty($request['HomeParkOnly']);
+        $home_park_only = !empty($request['HomeParkOnly']);
 
-		// HomeParkOnly: attendance subquery counts only sign-ins at the player's home park.
-		// Requires joining ork_mundane inside the subquery to access each player's park_id.
-		// Compatible with KingdomEventBonus (kingdom events count as +1 regardless of home park).
-		$home_park_join = $home_park_only
-			? "JOIN " . DB_PREFIX . "mundane mp ON mp.mundane_id = a.mundane_id"
-			: '';
+        // HomeParkOnly: attendance subquery counts only sign-ins at the player's home park.
+        // Requires joining ork_mundane inside the subquery to access each player's park_id.
+        // Compatible with KingdomEventBonus (kingdom events count as +1 regardless of home park).
+        $home_park_join = $home_park_only
+            ? "JOIN " . DB_PREFIX . "mundane mp ON mp.mundane_id = a.mundane_id"
+            : '';
 
-		// Attendance subquery expression.
-		// KingdomEventBonus: kingdom-sponsored events (ork_event.park_id = 0) count as at most +1.
-		// Extra columns to select alongside att_count in the attendance subquery (comma-prefixed).
-		$att_extra_cols = '';
+        // Attendance subquery expression.
+        // KingdomEventBonus: kingdom-sponsored events (ork_event.park_id = 0) count as at most +1.
+        // Extra columns to select alongside att_count in the attendance subquery (comma-prefixed).
+        $att_extra_cols = '';
 
-		if ($home_park_only && $kingdom_evt_bonus) {
-			// Home-park sign-ins + capped kingdom event bonus.
-			// Also emit a separate kingdom_evt_credit column (0 or 1) for display in the report.
-			$att_expr = "COUNT(CASE WHEN a.park_id = mp.park_id THEN 1 END)"
-			          . " + SIGN(SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END))";
-			$att_extra_cols = ", SIGN(SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END)) AS kingdom_evt_credit";
-		} elseif ($home_park_only) {
-			$att_expr = "COUNT(CASE WHEN a.park_id = mp.park_id THEN 1 END)";
-		} elseif ($kingdom_evt_bonus) {
-			// Regular sign-ins (parkday or park-hosted event) + kingdom event bonus (capped at 1).
-			// SIGN() returns 1 if any kingdom events were attended, 0 otherwise.
-			$att_expr = "COUNT(CASE WHEN a.event_id = 0 OR kve.event_id IS NULL OR kve.park_id != 0 THEN 1 END)"
-			          . " + SIGN(SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END))";
-		} elseif ($att_mode === 'count') {
-			$att_expr = "COUNT(*)";
-		} elseif ($att_mode === 'days') {
-			$att_expr = "COUNT(DISTINCT a.date)";
-		} elseif ($week_offset > 0) {
-			// Non-Monday week start: shift date back by offset days so the custom start day
-			// aligns with Monday, then use Monday-start ISO yearweek (mode 3).
-			// e.g. offset=1 → Tuesday-start; YEARWEEK handles year boundaries correctly.
-			$att_expr = "COUNT(DISTINCT YEARWEEK(DATE_SUB(a.date, INTERVAL $week_offset DAY), 3))";
-		} else {
-			// Monday-start: use pre-computed columns (fastest)
-			$att_expr = "COUNT(DISTINCT CONCAT(a.date_year, '-', a.date_week3))";
-		}
+        if ($home_park_only && $kingdom_evt_bonus) {
+            // Home-park sign-ins + capped kingdom event bonus.
+            // Also emit a separate kingdom_evt_credit column (0 or 1) for display in the report.
+            $att_expr = "COUNT(CASE WHEN a.park_id = mp.park_id THEN 1 END)"
+                      . " + SIGN(SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END))";
+            $att_extra_cols = ", SIGN(SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END)) AS kingdom_evt_credit";
+        } elseif ($home_park_only) {
+            $att_expr = "COUNT(CASE WHEN a.park_id = mp.park_id THEN 1 END)";
+        } elseif ($kingdom_evt_bonus) {
+            // Regular sign-ins (parkday or park-hosted event) + kingdom event bonus (capped at 1).
+            // SIGN() returns 1 if any kingdom events were attended, 0 otherwise.
+            $att_expr = "COUNT(CASE WHEN a.event_id = 0 OR kve.event_id IS NULL OR kve.park_id != 0 THEN 1 END)"
+                      . " + SIGN(SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END))";
+        } elseif ($att_mode === 'count') {
+            $att_expr = "COUNT(*)";
+        } elseif ($att_mode === 'days') {
+            $att_expr = "COUNT(DISTINCT a.date)";
+        } elseif ($week_offset > 0) {
+            // Non-Monday week start: shift date back by offset days so the custom start day
+            // aligns with Monday, then use Monday-start ISO yearweek (mode 3).
+            // e.g. offset=1 → Tuesday-start; YEARWEEK handles year boundaries correctly.
+            $att_expr = "COUNT(DISTINCT YEARWEEK(DATE_SUB(a.date, INTERVAL $week_offset DAY), 3))";
+        } else {
+            // Monday-start: use pre-computed columns (fastest)
+            $att_expr = "COUNT(DISTINCT CONCAT(a.date_year, '-', a.date_week3))";
+        }
+        // MinDistinctMonths: how many different calendar months the counted sign-ins
+        // fall in (same rows, same filters as att_count). Standard path only.
+        if ($min_distinct_months > 0) {
+            $att_extra_cols .= ", COUNT(DISTINCT DATE_FORMAT(a.date, '%Y-%m')) AS month_count";
+        }
+        // RequireKingdomEvent: how many of the counted sign-ins were at a
+        // Kingdom-sponsored event (needs the kve join below). Standard path only.
+        if ($require_kingdom_event) {
+            $att_extra_cols .= ", SUM(CASE WHEN kve.event_id IS NOT NULL AND kve.park_id = 0 THEN 1 ELSE 0 END) AS kingdom_evt_count";
+        }
 
-		// Pre-build the att LEFT JOIN clause. Two paths:
-		// 1. Outside-credit-cap (e.g. Tal Dagore): nested UNION ALL subquery tracks in/out kingdom
-		//    credits separately, applies per-event cap and outside-kingdom credit ceiling.
-		// 2. Standard path: single-level GROUP BY with att_expr.
-		// Both produce the same att alias with att_count; path 1 also emits outside_credits_raw.
-		$att_select_extra = '';
-		if ($max_outside_kingdom_creds > 0) {
-			$_per_evt = $max_credits_per_event > 0 ? "LEAST(COUNT(*), $max_credits_per_event)" : "COUNT(*)";
-			// Use COALESCE(a.kingdom_id, $kingdom_id) so that attendance rows with NULL kingdom_id
-			// are treated as in-kingdom, preventing NULL propagation in SUM() arithmetic.
-			$att_join_clause = "LEFT JOIN (
+        // Pre-build the att LEFT JOIN clause. Two paths:
+        // 1. Outside-credit-cap (e.g. Tal Dagore): nested UNION ALL subquery tracks in/out kingdom
+        //    credits separately, applies per-event cap and outside-kingdom credit ceiling.
+        // 2. Standard path: single-level GROUP BY with att_expr.
+        // Both produce the same att alias with att_count; path 1 also emits outside_credits_raw.
+        //
+        // Kingdom scope is computed by PARK membership, not by attendance.kingdom_id.
+        // attendance.kingdom_id is a point-in-time snapshot set when the row was
+        // inserted; if a park later transfers between kingdoms (most notably when a
+        // principality splits off from its parent), historical rows keep the old
+        // kingdom_id and are silently misattributed. park.kingdom_id is the stable
+        // truth, so we filter via park membership + a fallback branch for kingdom-only
+        // events (which have no park_id by definition).
+        $_park_subq        = "SELECT park_id FROM " . DB_PREFIX . "park WHERE kingdom_id = $kingdom_id";
+        $_dues_park_clause = $dues_home_park_only ? "d.park_id = m.park_id" : "d.park_id IN ($_park_subq)";
+        $_in_scope_clause  = "(a.park_id IN ($_park_subq) OR (a.kingdom_id = $kingdom_id AND a.park_id = 0))";
+        $att_select_extra = '';
+        if ($max_outside_kingdom_creds > 0) {
+            $_per_evt = $max_credits_per_event > 0 ? "LEAST(COUNT(*), $max_credits_per_event)" : "COUNT(*)";
+            // In-kingdom classification is by PARK membership (see $_in_scope_clause
+            // comment above). The boolean returns 1 for in-kingdom rows, 0 otherwise,
+            // which is exactly what the credit-multiplier arithmetic below needs.
+            $att_join_clause = "LEFT JOIN (
 					SELECT mundane_id,
 					       SUM(in_credits) + LEAST(SUM(out_credits), $max_outside_kingdom_creds) AS att_count,
 					       SUM(out_credits) AS outside_credits_raw
 					FROM (
 					    SELECT a.mundane_id,
-					           $_per_evt * (COALESCE(a.kingdom_id, $kingdom_id) = $kingdom_id) AS in_credits,
-					           $_per_evt * (COALESCE(a.kingdom_id, $kingdom_id) != $kingdom_id) AS out_credits
+					           $_per_evt * ($_in_scope_clause)    AS in_credits,
+					           $_per_evt * (NOT $_in_scope_clause) AS out_credits
 					    FROM " . DB_PREFIX . "attendance a
+					    $online_join
 					    WHERE a.event_id IS NOT NULL AND a.event_id != 0
 					      AND a.date >= '$start_date'
 					      $single_att_clause
+					      $online_clause
 					    GROUP BY a.mundane_id, a.event_id, a.kingdom_id
 					    UNION ALL
 					    SELECT a.mundane_id,
-					           (COALESCE(a.kingdom_id, $kingdom_id) = $kingdom_id) AS in_credits,
-					           (COALESCE(a.kingdom_id, $kingdom_id) != $kingdom_id) AS out_credits
+					           ($_in_scope_clause)    AS in_credits,
+					           (NOT $_in_scope_clause) AS out_credits
 					    FROM " . DB_PREFIX . "attendance a
+					    $online_join
 					    WHERE (a.event_id = 0 OR a.event_id IS NULL)
 					      AND a.date >= '$start_date'
 					      $single_att_clause
+					      $online_clause
 					) att_inner
 					GROUP BY mundane_id
 				) att ON att.mundane_id = m.mundane_id";
-			$att_select_extra = ', COALESCE(att.outside_credits_raw, 0) AS outside_credits_raw';
-		} else {
-			// Standard path — resolve inline PHP expressions into variables first
-			// so the att_join_clause string contains only PHP variable interpolations.
-			$_kve_join_sql  = $kingdom_evt_bonus
-				? "LEFT JOIN " . DB_PREFIX . "event kve ON kve.event_id = a.event_id AND a.event_id != 0"
-				: '';
-			$_att_where_kw  = $all_kingdoms ? "1=1" : "a.kingdom_id = $kingdom_id";
-			$att_join_clause = "LEFT JOIN (
+            $att_select_extra = ', COALESCE(att.outside_credits_raw, 0) AS outside_credits_raw';
+        } else {
+            // Standard path — resolve inline PHP expressions into variables first
+            // so the att_join_clause string contains only PHP variable interpolations.
+            $_kve_join_sql  = ($kingdom_evt_bonus || $require_kingdom_event)
+                ? "LEFT JOIN " . DB_PREFIX . "event kve ON kve.event_id = a.event_id AND a.event_id != 0"
+                : '';
+            $_att_where_kw  = $all_kingdoms ? "1=1" : $_in_scope_clause;
+            $att_join_clause = "LEFT JOIN (
 					SELECT a.mundane_id, $att_expr AS att_count $att_extra_cols
 					FROM " . DB_PREFIX . "attendance a
 					$home_park_join
@@ -3360,13 +4784,13 @@ class Report  extends Ork3 {
 					  $events_clause
 					GROUP BY a.mundane_id
 				) att ON att.mundane_id = m.mundane_id";
-		}
+        }
 
-		// Park-level attendance subquery (province mode only)
-		$province_join   = '';
-		$province_select = '';
-		if ($province_mode) {
-			$province_join = "
+        // Park-level attendance subquery (province mode only)
+        $province_join   = '';
+        $province_select = '';
+        if ($province_mode) {
+            $province_join = "
 				LEFT JOIN (
 					SELECT a.mundane_id, COUNT(*) AS park_att_count
 					FROM " . DB_PREFIX . "attendance a
@@ -3379,36 +4803,47 @@ class Report  extends Ork3 {
 					GROUP BY a.mundane_id
 				) patt ON patt.mundane_id = m.mundane_id
 			";
-			$province_select = ", COALESCE(patt.park_att_count, 0) AS park_att_count";
-		}
+            $province_select = ", COALESCE(patt.park_att_count, 0) AS park_att_count";
+        }
 
-		// Online-excluded count: separate subquery counting sign-ins that were filtered out
-		// due to ExcludeOnline, so the report can show how many were excluded per player.
-		$online_count_join   = '';
-		$online_count_select = '';
-		if ($exclude_online) {
-			$online_count_join = "
+        // Online-excluded count: separate subquery counting sign-ins that were filtered out
+        // due to ExcludeOnline, so the report can show how many were excluded per player.
+        $online_count_join   = '';
+        $online_count_select = '';
+        if ($exclude_online) {
+            // Same scope as the main attendance count, so for a COUNT-mode report
+            // excluded == (count with the setting on) - (count with it off):
+            // the outside-credit path reads every kingdom's rows, the standard path
+            // uses park membership (or any kingdom with AllKingdoms), HomeParkOnly
+            // keeps only home-park rows, ExcludeEvents keeps only park days.
+            $_online_count_scope       = $max_outside_kingdom_creds > 0 ? '1=1' : ($all_kingdoms ? '1=1' : $_in_scope_clause);
+            $_online_count_home_join   = ($home_park_only && $max_outside_kingdom_creds <= 0) ? $home_park_join : '';
+            $_online_count_home_clause = ($home_park_only && $max_outside_kingdom_creds <= 0) ? 'AND a.park_id = mp.park_id' : '';
+            $online_count_join = "
 				LEFT JOIN (
 					SELECT a.mundane_id, COUNT(*) AS online_excluded_count
 					FROM " . DB_PREFIX . "attendance a
 					LEFT JOIN " . DB_PREFIX . "event _oe ON _oe.event_id = a.event_id AND a.event_id != 0
 					LEFT JOIN " . DB_PREFIX . "park  _op ON _op.park_id  = a.park_id
-					WHERE a.kingdom_id = $kingdom_id
+					$_online_count_home_join
+					WHERE $_online_count_scope
 					  AND a.date >= '$start_date'
 					  $single_att_clause
-					  AND (_oe.name LIKE '%Online%' OR _op.name LIKE '%Online%')
+					  $events_clause
+					  $_online_count_home_clause
+					  AND (a.online = 1 OR _oe.name LIKE '%Online%' OR _op.name LIKE '%Online%')
 					GROUP BY a.mundane_id
 				) oatt ON oatt.mundane_id = m.mundane_id
 			";
-			$online_count_select = ', COALESCE(oatt.online_excluded_count, 0) AS online_excluded_count';
-		}
+            $online_count_select = ', COALESCE(oatt.online_excluded_count, 0) AS online_excluded_count';
+        }
 
-		// Event count: count sign-ins tied to an ork_event (event_id != 0) within the window.
-		// Informational only — does not affect eligibility or the main att_count.
-		$event_count_join   = '';
-		$event_count_select = '';
-		if ($show_event_count) {
-			$event_count_join = "
+        // Event count: count sign-ins tied to an ork_event (event_id != 0) within the window.
+        // Informational only — does not affect eligibility or the main att_count.
+        $event_count_join   = '';
+        $event_count_select = '';
+        if ($show_event_count) {
+            $event_count_join = "
 				LEFT JOIN (
 					SELECT a.mundane_id, COUNT(*) AS event_att_count
 					FROM " . DB_PREFIX . "attendance a
@@ -3419,15 +4854,15 @@ class Report  extends Ork3 {
 					GROUP BY a.mundane_id
 				) evatt ON evatt.mundane_id = m.mundane_id
 			";
-			$event_count_select = ', COALESCE(evatt.event_att_count, 0) AS event_att_count';
-		}
+            $event_count_select = ', COALESCE(evatt.event_att_count, 0) AS event_att_count';
+        }
 
-		// Active Knight: secondary raw sign-in count (always COUNT(*)) used for kingdoms
-		// that have a higher-tier eligibility based on total attendances.
-		$knight_join   = '';
-		$knight_select = '';
-		if ($active_knight_threshold > 0) {
-			$knight_join = "
+        // Active Knight: secondary raw sign-in count (always COUNT(*)) used for kingdoms
+        // that have a higher-tier eligibility based on total attendances.
+        $knight_join   = '';
+        $knight_select = '';
+        if ($active_knight_threshold > 0) {
+            $knight_join = "
 				LEFT JOIN (
 					SELECT a.mundane_id, COUNT(*) AS raw_att_count
 					FROM " . DB_PREFIX . "attendance a
@@ -3439,7 +4874,7 @@ class Report  extends Ork3 {
 					GROUP BY a.mundane_id
 				) katt ON katt.mundane_id = m.mundane_id
 			";
-			$knight_select = "
+            $knight_select = "
 				, COALESCE(katt.raw_att_count, 0) AS raw_att_count
 				, CASE WHEN EXISTS (
 					SELECT 1 FROM " . DB_PREFIX . "awards ma
@@ -3450,9 +4885,9 @@ class Report  extends Ork3 {
 					  AND (ma.revoked = 0 OR ma.revoked IS NULL)
 				) THEN 1 ELSE 0 END AS is_knight
 			";
-		}
+        }
 
-		$sql = "
+        $sql = "
 			SELECT
 				m.mundane_id, m.persona, m.waivered, m.park_member_since,
 				m.suspended, m.suspended_until,
@@ -3460,6 +4895,9 @@ class Report  extends Ork3 {
 				k.kingdom_id, k.name AS kingdom_name,
 				COALESCE(att.att_count, 0) AS att_count
 				$att_select_extra
+				" . ($min_distinct_months > 0 && $max_outside_kingdom_creds <= 0 ? ", COALESCE(att.month_count, 0) AS month_count" : "") . "
+				" . ($require_kingdom_event && $max_outside_kingdom_creds <= 0 ? ", COALESCE(att.kingdom_evt_count, 0) AS kingdom_evt_count" : "") . "
+				" . ($office_counts_as_dues ? ", CASE WHEN EXISTS (SELECT 1 FROM " . DB_PREFIX . "officer o WHERE o.mundane_id = m.mundane_id AND o.kingdom_id = $kingdom_id) THEN 1 ELSE 0 END AS in_office" : "") . "
 				$online_count_select
 				$event_count_select
 				" . ($home_park_only && $kingdom_evt_bonus ? ", COALESCE(att.kingdom_evt_credit, 0) AS kingdom_evt_credit" : "") . "
@@ -3469,7 +4907,7 @@ class Report  extends Ork3 {
 				CASE WHEN EXISTS (
 					SELECT 1 FROM " . DB_PREFIX . "dues d
 					WHERE d.mundane_id = m.mundane_id
-					  AND d.kingdom_id = $kingdom_id
+					  AND $_dues_park_clause
 					  AND d.revoked != 1
 					  AND (d.dues_until >= CURDATE() OR d.dues_for_life = 1)
 				) THEN 1 ELSE 0 END AS dues_paid,
@@ -3477,7 +4915,7 @@ class Report  extends Ork3 {
 				             ELSE MAX(d.dues_until) END
 				 FROM " . DB_PREFIX . "dues d
 				 WHERE d.mundane_id = m.mundane_id
-				   AND d.kingdom_id = $kingdom_id
+				   AND $_dues_park_clause
 				   AND d.revoked != 1
 				   AND (d.dues_until >= CURDATE() OR d.dues_for_life = 1)
 				) AS dues_until
@@ -3497,85 +4935,102 @@ class Report  extends Ork3 {
 			ORDER BY p.name, m.persona
 		";
 
-		$r = $this->db->query($sql);
-		$response = ['Players' => [], 'AttendanceRequired' => $att_req, 'MonthsWindow' => $months_win,
-		             'MinMembershipMonths' => $min_mem_mo, 'ProvinceMode' => $province_mode,
-		             'AttendanceMode' => $att_mode, 'WeekOffset' => $week_offset,
-		             'KingdomEventBonus' => $kingdom_evt_bonus,
-		             'ActiveKnightThreshold' => $active_knight_threshold,
-		             'ActiveMemberThreshold' => $active_member_threshold,
-		             'ExcludeOnline' => $exclude_online,
-		             'HomeParkOnly' => $home_park_only,
-		             'DaysWindow' => $days_window,
-		             'MinAge' => $min_age,
-		             'StartDate' => $start_date,
-		             'DisplayStartDate' => $display_start_date,
-		             'AllKingdoms' => $all_kingdoms,
-		             'MaxCreditsPerEvent' => $max_credits_per_event,
-		             'MaxOutsideKingdomCredits' => $max_outside_kingdom_creds,
-		             'MembershipMode' => $membership_mode,
-		             'ShowEventCount' => $show_event_count,
-		             'ExcludeEvents' => $exclude_events,
-		             'WaiverAgeMonths' => $waiver_age_months];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$_member_date    = $membership_mode === 'first_attendance' ? $r->first_att_date : $r->park_member_since;
-				$membership_ok   = empty($_member_date) || $_member_date === '0000-00-00'
-					|| strtotime($_member_date) <= strtotime("-{$min_mem_mo} months");
-				$suspended       = (int)$r->suspended === 1;
-				$att_count       = (int)$r->att_count;
-				$base_ok         = !$suspended && $r->waivered == 1 && $r->dues_paid == 1 && $membership_ok;
-				$kingdom_eligible = $base_ok && $att_count >= $att_req;
+        $r = $this->db->query($sql);
+        $response = ['Players' => [], 'AttendanceRequired' => $att_req, 'MonthsWindow' => $months_win,
+                     'MinMembershipMonths' => $min_mem_mo, 'ProvinceMode' => $province_mode,
+                     'AttendanceMode' => $att_mode, 'WeekOffset' => $week_offset,
+                     'KingdomEventBonus' => $kingdom_evt_bonus,
+                     'ActiveKnightThreshold' => $active_knight_threshold,
+                     'ActiveMemberThreshold' => $active_member_threshold,
+                     'ExcludeOnline' => $exclude_online,
+                     'HomeParkOnly' => $home_park_only,
+                     'DaysWindow' => $days_window,
+                     'MinAge' => $min_age,
+                     'StartDate' => $start_date,
+                     'DisplayStartDate' => $display_start_date,
+                     'AllKingdoms' => $all_kingdoms,
+                     'MaxCreditsPerEvent' => $max_credits_per_event,
+                     'MaxOutsideKingdomCredits' => $max_outside_kingdom_creds,
+                     'MembershipMode' => $membership_mode,
+                     'ShowEventCount' => $show_event_count,
+                     'ExcludeEvents' => $exclude_events,
+                     'WaiverAgeMonths' => $waiver_age_months,
+                     'MinDistinctMonths' => $min_distinct_months,
+                     'DuesHomeParkOnly' => $dues_home_park_only,
+                     'OfficeCountsAsDues' => $office_counts_as_dues,
+                     'RequireKingdomEvent' => $require_kingdom_event];
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $_member_date    = $membership_mode === 'first_attendance' ? $r->first_att_date : $r->park_member_since;
+                $membership_ok   = empty($_member_date) || $_member_date === '0000-00-00'
+                    || strtotime($_member_date) <= strtotime("-{$min_mem_mo} months");
+                $suspended       = (int)$r->suspended === 1;
+                $att_count       = (int)$r->att_count;
+                $in_office       = $office_counts_as_dues && (int)($r->in_office ?? 0) === 1;
+                $dues_ok         = $r->dues_paid == 1 || $in_office;
+                $base_ok         = !$suspended && $r->waivered == 1 && $dues_ok && $membership_ok;
+                $month_count     = $min_distinct_months > 0 ? (int)($r->month_count ?? 0) : null;
+                $months_ok       = $min_distinct_months <= 0 || $month_count >= $min_distinct_months;
+                $kingdom_evt_count = $require_kingdom_event ? (int)($r->kingdom_evt_count ?? 0) : null;
+                $kingdom_evt_ok  = !$require_kingdom_event || $kingdom_evt_count >= 1;
+                $kingdom_eligible = $base_ok && $att_count >= $att_req && $months_ok && $kingdom_evt_ok;
 
-				$row = [
-					'MundaneId'       => (int)$r->mundane_id,
-					'Persona'         => $r->persona,
-					'ParkId'          => (int)$r->park_id,
-					'ParkName'        => $r->park_name,
-					'KingdomId'       => (int)$r->kingdom_id,
-					'KingdomName'     => $r->kingdom_name,
-					'Waivered'        => (int)$r->waivered,
-					'DuesPaid'        => (int)$r->dues_paid,
-					'DuesUntil'       => $r->dues_until,
-					'AttCount'        => $att_count,
-					'MemberSince'     => $membership_mode === 'first_attendance' ? $r->first_att_date : $r->park_member_since,
-					'MembershipOk'    => $membership_ok,
-					'Suspended'       => $suspended,
-					'SuspendedUntil'  => $r->suspended_until,
-					'KingdomEligible'    => $kingdom_eligible,
-					'VotingEligible'     => $kingdom_eligible,
-					'KingdomEventCredit' => $home_park_only && $kingdom_evt_bonus ? (int)$r->kingdom_evt_credit : null,
-					'OutsideCredits'     => $max_outside_kingdom_creds > 0 ? (int)$r->outside_credits_raw : null,
-					'ActiveMember'       => $active_member_threshold > 0 ? ($base_ok && $att_count >= $active_member_threshold) : null,
-					'ActiveKnight'       => false,
-					'OnlineExcluded'     => $exclude_online ? (int)$r->online_excluded_count : null,
-					'EventCount'         => $show_event_count ? (int)$r->event_att_count : null,
-				];
-				if ($active_knight_threshold > 0) {
-					$raw_att_count        = (int)$r->raw_att_count;
-					$is_knight            = (int)$r->is_knight === 1;
-					$row['RawAttCount']   = $raw_att_count;
-					$row['IsKnight']      = $is_knight;
-					$row['ActiveKnight']  = $is_knight && $kingdom_eligible && $raw_att_count >= $active_knight_threshold;
-				}
+                $row = [
+                    'MundaneId'       => (int)$r->mundane_id,
+                    'Persona'         => $r->persona,
+                    'ParkId'          => (int)$r->park_id,
+                    'ParkName'        => $r->park_name,
+                    'KingdomId'       => (int)$r->kingdom_id,
+                    'KingdomName'     => $r->kingdom_name,
+                    'Waivered'        => (int)$r->waivered,
+                    'DuesPaid'        => (int)$r->dues_paid,
+                    'DuesUntil'       => $r->dues_until,
+                    'AttCount'        => $att_count,
+                    'MemberSince'     => $membership_mode === 'first_attendance' ? $r->first_att_date : $r->park_member_since,
+                    'MembershipOk'    => $membership_ok,
+                    'Suspended'       => $suspended,
+                    'SuspendedUntil'  => $r->suspended_until,
+                    'KingdomEligible'    => $kingdom_eligible,
+                    'VotingEligible'     => $kingdom_eligible,
+                    'KingdomEventCredit' => $home_park_only && $kingdom_evt_bonus ? (int)$r->kingdom_evt_credit : null,
+                    'OutsideCredits'     => $max_outside_kingdom_creds > 0 ? (int)$r->outside_credits_raw : null,
+                    'ActiveMember'       => $active_member_threshold > 0 ? ($base_ok && $att_count >= $active_member_threshold) : null,
+                    'ActiveKnight'       => false,
+                    'OnlineExcluded'     => $exclude_online ? (int)$r->online_excluded_count : null,
+                    'EventCount'         => $show_event_count ? (int)$r->event_att_count : null,
+                    'MonthCount'         => $month_count,
+                    'MonthsOk'           => $months_ok,
+                    'InOffice'           => $in_office,
+                    'DuesOk'             => $dues_ok,
+                    'KingdomEventCount'  => $kingdom_evt_count,
+                    'KingdomEventOk'     => $kingdom_evt_ok,
+                ];
+                if ($active_knight_threshold > 0) {
+                    $raw_att_count        = (int)$r->raw_att_count;
+                    $is_knight            = (int)$r->is_knight === 1;
+                    $row['RawAttCount']   = $raw_att_count;
+                    $row['IsKnight']      = $is_knight;
+                    $row['ActiveKnight']  = $is_knight && $kingdom_eligible && $raw_att_count >= $active_knight_threshold;
+                }
 
-				if ($province_mode) {
-					$park_att_count      = (int)$r->park_att_count;
-					$province_eligible   = $base_ok && $park_att_count >= $att_req;
-					$row['ParkAttCount']       = $park_att_count;
-					$row['ProvinceEligible']   = $province_eligible;
-					// Province implies kingdom (park attendance is a subset of kingdom attendance),
-					// so VotingEligible stays kingdom_eligible — the broader right.
-				}
+                if ($province_mode) {
+                    $park_att_count      = (int)$r->park_att_count;
+                    $province_eligible   = $base_ok && $park_att_count >= $att_req;
+                    $row['ParkAttCount']       = $park_att_count;
+                    $row['ProvinceEligible']   = $province_eligible;
+                    // Province implies kingdom (park attendance is a subset of kingdom attendance),
+                    // so VotingEligible stays kingdom_eligible — the broader right.
+                }
 
-				$response['Players'][] = $row;
-			}
-		}
-		return $response;
-	}
+                $response['Players'][] = $row;
+            }
+        }
+        return $response;
+    }
 
-	public function GetInactiveKingdoms($request) {
-		$sql = "
+    public function GetInactiveKingdoms($request)
+    {
+        $sql = "
 			SELECT k.kingdom_id, k.name AS kingdom_name, k.active, k.modified,
 			       k.parent_kingdom_id,
 			       pk.name AS parent_kingdom_name,
@@ -3590,30 +5045,31 @@ class Report  extends Ork3 {
 			ORDER BY k.name
 		";
 
-		$r = $this->db->query($sql);
-		$response = ['Kingdoms' => []];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$response['Kingdoms'][] = [
-					'KingdomId'         => $r->kingdom_id,
-					'KingdomName'       => $r->kingdom_name,
-					'Active'            => $r->active,
-					'Modified'          => $r->modified,
-					'ParentKingdomId'   => $r->parent_kingdom_id,
-					'ParentKingdomName' => $r->parent_kingdom_name,
-					'LastAttendance'    => $r->last_attendance,
-					'Type'              => $r->parent_kingdom_id > 0 ? 'Principality' : 'Kingdom',
-				];
-			}
-		}
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        $response = ['Kingdoms' => []];
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $response['Kingdoms'][] = [
+                    'KingdomId'         => $r->kingdom_id,
+                    'KingdomName'       => $r->kingdom_name,
+                    'Active'            => $r->active,
+                    'Modified'          => $r->modified,
+                    'ParentKingdomId'   => $r->parent_kingdom_id,
+                    'ParentKingdomName' => $r->parent_kingdom_name,
+                    'LastAttendance'    => $r->last_attendance,
+                    'Type'              => $r->parent_kingdom_id > 0 ? 'Principality' : 'Kingdom',
+                ];
+            }
+        }
+        return $response;
+    }
 
-	public function GetInactiveParks($request) {
-		$kingdom_id = valid_id($request['KingdomId'] ?? 0) ? (int)$request['KingdomId'] : 0;
-		$kingdom_clause = $kingdom_id ? " AND p.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ")" : '';
+    public function GetInactiveParks($request)
+    {
+        $kingdom_id = valid_id($request['KingdomId'] ?? 0) ? (int)$request['KingdomId'] : 0;
+        $kingdom_clause = $kingdom_id ? " AND p.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ")" : '';
 
-		$sql = "
+        $sql = "
 			SELECT p.park_id, p.name AS park_name, p.active, p.modified,
 			       k.kingdom_id, k.name AS kingdom_name,
 			       pt.title AS park_type,
@@ -3629,287 +5085,1020 @@ class Report  extends Ork3 {
 			ORDER BY k.name, p.name
 		";
 
-		$r = $this->db->query($sql);
-		$response = ['Parks' => []];
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$response['Parks'][] = [
-					'ParkId'         => $r->park_id,
-					'ParkName'       => $r->park_name,
-					'Active'         => $r->active,
-					'Modified'       => $r->modified,
-					'KingdomId'      => $r->kingdom_id,
-					'KingdomName'    => $r->kingdom_name,
-					'ParkType'       => $r->park_type,
-					'LastAttendance' => $r->last_attendance,
-				];
-			}
-		}
-		return $response;
-	}
+        $r = $this->db->query($sql);
+        $response = ['Parks' => []];
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $response['Parks'][] = [
+                    'ParkId'         => $r->park_id,
+                    'ParkName'       => $r->park_name,
+                    'Active'         => $r->active,
+                    'Modified'       => $r->modified,
+                    'KingdomId'      => $r->kingdom_id,
+                    'KingdomName'    => $r->kingdom_name,
+                    'ParkType'       => $r->park_type,
+                    'LastAttendance' => $r->last_attendance,
+                ];
+            }
+        }
+        return $response;
+    }
 
-	/* ============================ Amtgard Week in Review ============================ */
+    /**
+     * Park Activity: every park in a kingdom (or everywhere) with its most recent
+     * attendance and its sign-in totals over a trailing window of whole months.
+     * Ported from the jsork "Freehold Activity" page, which pulled one
+     * AttendanceSummary per park from the browser; this is a single query.
+     *
+     * Request:
+     *   KingdomId      0 = all kingdoms, else the kingdom and its principalities
+     *   Months         trailing window, 1-120, default 24
+     *   IncludeRetired truthy = include Retired parks (default Active only)
+     *
+     * attendance.date is a DATE, so "today" is PHP's wall-clock date, not
+     * CURDATE(), which rolls over at 7 PM Central on this database.
+     */
+    public function GetParkActivity($request)
+    {
+        $kingdom_id      = valid_id($request['KingdomId'] ?? 0) ? (int)$request['KingdomId'] : 0;
+        $months          = (int)($request['Months'] ?? 24);
+        $months          = max(1, min(120, $months > 0 ? $months : 24));
+        $include_retired = !empty($request['IncludeRetired']);
 
-	// Compute the full weekly recap payload for a given week. Server-local Mon-Sun
-	// window. Defaults to the most recently completed week. Called once by the cron;
-	// page reads come from ork_weekly_recap via ReadWeeklyRecap().
-	public function GetWeeklyRecap($request = null) {
-		$win = $this->_WeeklyRecapWindow($request['WeekStart'] ?? null);
-		return array(
-			'WeekStart'        => $win['WeekStart'],
-			'WeekEnd'          => $win['WeekEnd'],
-			'Knightings'       => $this->_RecapPeerages($win, array('Knight')),
-			'Masterhoods'      => $this->_RecapPeerages($win, array('Master')),
-			'Paragons'         => $this->_RecapPeerages($win, array('Paragon')),
-			'TopEvents'        => $this->_RecapTopEvents($win, 3),
-			'TopParks'         => $this->_RecapTopParks($win, 3),
-			'NewPlayers'       => $this->_RecapNewPlayers($win),
-			'ReturningPlayers' => $this->_RecapReturningPlayers($win, 90),
-			'MilestoneEvents'  => $this->_RecapMilestoneEvents($win, 25),
-			'PlatformStats'    => $this->_RecapCloudflareStats($win),
-		);
-	}
+        $today        = date('Y-m-d');
+        $window_start = date('Y-m-d', strtotime("$today -$months month"));
 
-	// Read a previously-computed recap from ork_weekly_recap. Returns the decoded
-	// payload (plus ComputedAt) or null if no row exists for that week.
-	public function ReadWeeklyRecap($request = null) {
-		$win = $this->_WeeklyRecapWindow($request['WeekStart'] ?? null);
-		$sql = "SELECT computed_at, payload_json
+        $kingdom_clause = $kingdom_id
+            ? " AND p.kingdom_id IN (" . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ")"
+            : '';
+        $active_clause = $include_retired ? '' : " AND p.active = 'Active'";
+        $window        = "a.date > '$window_start' AND a.date <= '$today'";
+
+        $sql = "
+			SELECT p.park_id, p.name AS park_name, p.active,
+			       k.kingdom_id, k.name AS kingdom_name,
+			       pt.title AS park_type,
+			       (SELECT MAX(a.date) FROM " . DB_PREFIX . "attendance a WHERE a.park_id = p.park_id) AS last_attendance,
+			       (SELECT COUNT(DISTINCT a.date) FROM " . DB_PREFIX . "attendance a WHERE a.park_id = p.park_id AND $window) AS signin_days,
+			       (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance a WHERE a.park_id = p.park_id AND $window) AS attendances,
+			       (SELECT COUNT(DISTINCT a.mundane_id) FROM " . DB_PREFIX . "attendance a WHERE a.park_id = p.park_id AND $window) AS distinct_players
+			FROM " . DB_PREFIX . "park p
+			JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = p.kingdom_id
+			LEFT JOIN " . DB_PREFIX . "parktitle pt ON pt.parktitle_id = p.parktitle_id
+			WHERE p.park_id > 0
+			  AND p.name != ''
+			  AND p.name NOT LIKE '%No Park%'
+			  $active_clause
+			  $kingdom_clause
+			ORDER BY k.name, p.name
+		";
+
+        $r = $this->db->query($sql);
+        $response = [
+            'Status'      => Success(),
+            'Parks'       => [],
+            'ReportDate'  => $today,
+            'WindowStart' => $window_start,
+            'Months'      => $months,
+        ];
+        if ($r !== false && $r->size() > 0) {
+            $today_ts = strtotime($today);
+            while ($r->next()) {
+                $last = $r->last_attendance ?: null;
+                $response['Parks'][] = [
+                    'ParkId'          => (int)$r->park_id,
+                    'ParkName'        => $r->park_name,
+                    'ParkType'        => $r->park_type,
+                    'Active'          => $r->active,
+                    'KingdomId'       => (int)$r->kingdom_id,
+                    'KingdomName'     => $r->kingdom_name,
+                    'LastAttendance'  => $last,
+                    'DaysInactive'    => $last ? max(0, (int)floor(($today_ts - strtotime($last)) / 86400)) : null,
+                    'SigninDays'      => (int)$r->signin_days,
+                    'Attendances'     => (int)$r->attendances,
+                    'DistinctPlayers' => (int)$r->distinct_players,
+                ];
+            }
+        }
+        return $response;
+    }
+
+    /* ============================ Amtgard Week in Review ============================ */
+
+    // Compute the full weekly recap payload for a given week. Server-local Mon-Sun
+    // window. Defaults to the most recently completed week. Called once by the cron;
+    // page reads come from ork_weekly_recap via ReadWeeklyRecap().
+    public function GetWeeklyRecap($request = null)
+    {
+        $win = $this->_WeeklyRecapWindow($request['WeekStart'] ?? null);
+        return array(
+            'WeekStart'        => $win['WeekStart'],
+            'WeekEnd'          => $win['WeekEnd'],
+            'Knightings'       => $this->_RecapPeerages($win, array('Knight')),
+            'Masterhoods'      => $this->_RecapPeerages($win, array('Master')),
+            'Paragons'         => $this->_RecapPeerages($win, array('Paragon')),
+            'TopEvents'        => $this->_RecapTopEvents($win, 3),
+            'TopParks'         => $this->_RecapTopParks($win, 3),
+            'NewPlayers'       => $this->_RecapNewPlayers($win),
+            'ReturningPlayers' => $this->_RecapReturningPlayers($win, 90),
+            'MilestoneEvents'  => $this->_RecapMilestoneEvents($win, 25),
+            'PlatformStats'    => $this->_RecapCloudflareStats($win),
+            'HumanUsers'       => $this->_RecapGaHumanUsers($win),
+        );
+    }
+
+    // Read a previously-computed recap from ork_weekly_recap. Returns the decoded
+    // payload (plus ComputedAt) or null if no row exists for that week.
+    public function ReadWeeklyRecap($request = null)
+    {
+        $win = $this->_WeeklyRecapWindow($request['WeekStart'] ?? null);
+        $sql = "SELECT computed_at, payload_json
 				FROM " . DB_PREFIX . "weekly_recap
 				WHERE week_start = :ws";
-		$r = $this->db->query($sql, array(':ws' => $win['WeekStart']));
-		if (!$r || $r->size() == 0 || !$r->next()) return null;
-		$payload = json_decode($r->payload_json, true);
-		if (!is_array($payload)) return null;
-		$payload['ComputedAt'] = $r->computed_at;
-		return $payload;
-	}
+        $r = $this->db->query($sql, array(':ws' => $win['WeekStart']));
+        if (!$r || $r->size() == 0 || !$r->next()) {
+            return null;
+        }
+        $payload = json_decode($r->payload_json, true);
+        if (!is_array($payload)) {
+            return null;
+        }
+        $payload['ComputedAt'] = $r->computed_at;
+        return $payload;
+    }
 
-	// Fetches NA-only Cloudflare traffic totals for the week. Returns null on any
-	// failure (missing credentials, HTTP error, malformed response, timeout) so the
-	// rest of the recap still ships. CF retains ~30-90 days of analytics depending
-	// on plan tier — historical backfills past that horizon will get null here.
-	//
-	// Credentials: prefers PHP constants CF_API_TOKEN / CF_ZONE_ID (the established
-	// pattern in config.php, matching SENDGRID_API_KEY etc.); falls back to env
-	// vars of the same name when the constants are empty/missing — so dev can
-	// pass them via docker `-e` without editing the tracked config.dev.php.
-	private function _RecapCloudflareStats($win) {
-		$token = (defined('CF_API_TOKEN') && CF_API_TOKEN !== '') ? CF_API_TOKEN : getenv('CF_API_TOKEN');
-		$zone  = (defined('CF_ZONE_ID')   && CF_ZONE_ID   !== '') ? CF_ZONE_ID   : getenv('CF_ZONE_ID');
-		if (empty($token) || empty($zone)) return null;
+    /**
+     * Weekly platform trend series for the public Recap/trends page: one entry
+     * per stored recap week with just the headline numbers, extracted from
+     * payload_json in SQL — the full payloads also carry peerage/event lists
+     * that a trends page has no business shipping.
+     *
+     * Values are null for weeks where a source wasn't available (GA not yet
+     * installed, CF beyond retention, deliberately blanked bot-wave weeks) —
+     * the chart renders those as gaps, which is the honest presentation.
+     *
+     * Cached 1h: the underlying table changes once a day (the 6am cron).
+     */
+    public function GetRecapTrendSeries()
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('recap-trend-series'));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 3600)) !== false) {
+            return $cache;
+        }
+        $sql = "SELECT week_start,
+					   JSON_EXTRACT(payload_json, '$.HumanUsers')                        AS visitors,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.Requests')            AS requests,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.BlockedOrChallenged') AS blocked,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.CacheHits')           AS cache_hits,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.Bytes')               AS bytes,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.RequestsGlobal')      AS requests_global,
+					   JSON_EXTRACT(payload_json, '$.PlatformStats.BlockedGlobal')       AS blocked_global
+				FROM " . DB_PREFIX . "weekly_recap
+				ORDER BY week_start";
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                // JSON_EXTRACT yields the string 'null' for JSON null and PHP
+                // null for a missing key; is_numeric() folds both to null here.
+                // RequestsGlobal/BlockedGlobal are absent on every week computed
+                // before the ORK-scoping fix (2026-08-27) — those weeks render as
+                // a gap on the worldwide chart, same as any other missing source.
+                $out[] = array(
+                    'WeekStart'      => $r->week_start,
+                    'Visitors'       => is_numeric($r->visitors) ? (int)$r->visitors : null,
+                    'Requests'       => is_numeric($r->requests) ? (int)$r->requests : null,
+                    'Blocked'        => is_numeric($r->blocked) ? (int)$r->blocked : null,
+                    'CacheHits'      => is_numeric($r->cache_hits) ? (int)$r->cache_hits : null,
+                    'Bytes'          => is_numeric($r->bytes) ? (float)$r->bytes : null,
+                    'RequestsGlobal' => is_numeric($r->requests_global) ? (int)$r->requests_global : null,
+                    'BlockedGlobal'  => is_numeric($r->blocked_global) ? (int)$r->blocked_global : null,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
 
-		// CF wants UTC ISO 8601. Convert the server-local window.
-		$since = gmdate('Y-m-d\TH:i:s\Z', strtotime($win['StartDt']));
-		$until = gmdate('Y-m-d\TH:i:s\Z', strtotime($win['EndDt']));
+    /**
+     * Daily sign-in counts from the anonymous tally, grouped into three
+     * reader-facing client families for the public trends page. The tally
+     * stores (day, client-bucket, count) with no player attribution, so this
+     * is aggregation over already-anonymous data.
+     */
+    public function GetSigninTrendSeries()
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('signin-trend-series'));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 3600)) !== false) {
+            return $cache;
+        }
+        $sql = "SELECT day,
+					   SUM(CASE WHEN client LIKE 'mORK%' OR client LIKE 'jsork%' THEN signins ELSE 0 END) AS apps,
+					   SUM(CASE WHEN client LIKE 'In-app browser%' THEN signins ELSE 0 END)               AS inapp,
+					   SUM(CASE WHEN client NOT LIKE 'mORK%' AND client NOT LIKE 'jsork%'
+					             AND client NOT LIKE 'In-app browser%' THEN signins ELSE 0 END)           AS browsers,
+					   SUM(signins) AS total
+				FROM " . DB_PREFIX . "signin_tally
+				GROUP BY day
+				ORDER BY day";
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'Day'      => $r->day,
+                    'Browsers' => (int)$r->browsers,
+                    'InApp'    => (int)$r->inapp,
+                    'Apps'     => (int)$r->apps,
+                    'Total'    => (int)$r->total,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
 
-		$gql = 'query($zone:String!,$since:Time!,$until:Time!) {
+    /**
+     * Active sessions per community-app version string ("mORK/1.1.14
+     * (Android)", "jsork/2.0", ...) — the rollout picture for third-party
+     * app developers, published on Platform Trends so nobody needs SQL.
+     * Explicit allowlist matching GetSigninTrendSeries's "Apps" bucket —
+     * a name-slash-digit heuristic also catches curl/python scripts, which
+     * aren't community apps. Aggregate counts only, no identities.
+     */
+    public function GetCommunityAppVersions()
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('community-app-versions'));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) {
+            return $cache;
+        }
+        $r = $this->db->query(
+            "SELECT user_agent, COUNT(*) AS sessions, COUNT(DISTINCT mundane_id) AS players
+			   FROM " . DB_PREFIX . "session
+			  WHERE expires > NOW()
+			    AND (user_agent LIKE 'mORK/%' OR user_agent LIKE 'jsork/%')
+			  GROUP BY user_agent
+			  ORDER BY sessions DESC"
+        );
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'Client'   => (string)$r->user_agent,
+                    'Sessions' => (int)$r->sessions,
+                    'Players'  => (int)$r->players,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
+
+    /**
+     * JSON-service usage over the last N days (ork_api_tally, written by
+     * JsonServer::call_endpoint), as TWO small summaries rather than one long
+     * client-x-endpoint grid.
+     *
+     * GetCommunityAppVersions answers "who is logged in"; this answers "who is
+     * actually CALLING us", which for a client that authenticates once a month
+     * is a completely different question.
+     *
+     * Returns ['Clients' => [...], 'Endpoints' => [...]] because those are two
+     * separate questions -- "who uses the service" and "what does it cost us" --
+     * and a combined grid answers neither at a glance. The full client-x-endpoint
+     * detail stays in the table for ad-hoc queries; it just is not a thing anyone
+     * should have to read forty rows of every week.
+     *
+     * Endpoints are ranked by TOTAL TIME, not call count, because that is the
+     * number worth acting on: one answering in 4ms half a million times and one
+     * taking 900ms a hundred times rank identically by popularity and could
+     * hardly differ more by cost. AvgMs rides alongside so a slow-but-rare
+     * endpoint stays visible instead of being buried.
+     *
+     * Aggregate counts only, no identities -- see the table's own comment.
+     *
+     * @param int $days how far back to sum (default 7)
+     * @return array{Clients: array, Endpoints: array}
+     */
+    public function GetApiUsage($days = 7)
+    {
+        $days = max(1, min(90, (int)$days));
+        $key  = Ork3::$Lib->ghettocache->key(array('api-usage-v2', $days));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 1800)) !== false) {
+            return $cache;
+        }
+        $since = "day >= DATE_SUB(CURDATE(), INTERVAL " . $days . " DAY)";
+        $out   = array('Clients' => array(), 'Endpoints' => array());
+
+        // Who is calling: one row per client. Short by construction -- `client`
+        // is the collapsed bucket from ork_session_client_label().
+        $r = $this->db->query(
+            "SELECT client,
+			        SUM(calls)             AS calls,
+			        COUNT(DISTINCT endpoint) AS endpoints,
+			        SUM(ms_total)          AS total_ms
+			   FROM " . DB_PREFIX . "api_tally
+			  WHERE {$since}
+			  GROUP BY client
+			  ORDER BY calls DESC
+			  LIMIT 15"
+        );
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out['Clients'][] = array(
+                    'Client'    => (string)$r->client,
+                    'Calls'     => (int)$r->calls,
+                    'Endpoints' => (int)$r->endpoints,
+                    'TotalMs'   => (int)$r->total_ms,
+                );
+            }
+        }
+
+        // What it costs: top endpoints across all clients.
+        $r2 = $this->db->query(
+            "SELECT endpoint,
+			        SUM(calls)    AS calls,
+			        SUM(ms_total) AS total_ms
+			   FROM " . DB_PREFIX . "api_tally
+			  WHERE {$since}
+			  GROUP BY endpoint
+			  ORDER BY total_ms DESC, calls DESC
+			  LIMIT 10"
+        );
+        if ($r2 !== false && $r2->size() > 0) {
+            while ($r2->next()) {
+                $calls = (int)$r2->calls;
+                $out['Endpoints'][] = array(
+                    'Endpoint' => (string)$r2->endpoint,
+                    'Calls'    => $calls,
+                    'TotalMs'  => (int)$r2->total_ms,
+                    'AvgMs'    => $calls > 0 ? round((int)$r2->total_ms / $calls, 1) : 0.0,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
+
+    /**
+     * Distinct players credited with attendance per week (Monday-anchored,
+     * matching the recap window), across all recorded history — the long
+     * participation curve of the game itself, independent of web analytics.
+     *
+     * This is the expensive one (full aggregation over ork_attendance, ~2s),
+     * so it carries a 24h ghettocache: attendance only ever moves the current
+     * week, and a day of staleness on a decades-long chart is invisible.
+     */
+    public function GetWeeklyActivePlayersSeries()
+    {
+        $key = Ork3::$Lib->ghettocache->key(array('weekly-active-players'));
+        if (($cache = Ork3::$Lib->ghettocache->get(__CLASS__ . '.' . __FUNCTION__, $key, 86400)) !== false) {
+            return $cache;
+        }
+        // Date guards drop the stray garbage rows (far-future/ancient dates)
+        // that two decades of hand-entered data inevitably contain.
+        $sql = "SELECT DATE_SUB(date, INTERVAL WEEKDAY(date) DAY) AS wk,
+					   COUNT(DISTINCT mundane_id) AS players
+				FROM " . DB_PREFIX . "attendance
+				WHERE date >= '2005-01-01' AND date <= CURDATE()
+				GROUP BY wk
+				ORDER BY wk";
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'WeekStart' => $r->wk,
+                    'Players'   => (int)$r->players,
+                );
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache(__CLASS__ . '.' . __FUNCTION__, $key, $out);
+    }
+
+    // Fetches Cloudflare traffic totals for the week, in TWO scopes:
+    //   - ork.amtgard.com, US+Canada only  (the "for the ORK" numbers the recap
+    //     chart has always claimed to show)
+    //   - the whole amtgard.com zone, every country (ORK + wiki + play + go +
+    //     idp + staging + everything else sharing CF_ZONE_ID), unrestricted
+    // CF_ZONE_ID is the shared zone for the whole domain, not the ORK alone, so
+    // the first scope needs an explicit host filter — its absence (until
+    // 2026-08-27) meant the "ORK" chart was silently reporting the second
+    // scope's numbers under the first scope's label. Both are kept, on two
+    // separate charts, because their scales differ by roughly 3x and plotting
+    // them together on one axis would flatten the smaller (correct) line.
+    //
+    // Returns null on any failure (missing credentials, HTTP error, malformed
+    // response, timeout) so the rest of the recap still ships. CF retains
+    // ~30-90 days of analytics depending on plan tier — historical backfills
+    // past that horizon will get null here.
+    //
+    // Credentials: prefers PHP constants CF_API_TOKEN / CF_ZONE_ID (the established
+    // pattern in config.php, matching SENDGRID_API_KEY etc.); falls back to env
+    // vars of the same name when the constants are empty/missing — so dev can
+    // pass them via docker `-e` without editing the tracked config.dev.php.
+    private function _RecapCloudflareStats($win)
+    {
+        $token = (defined('CF_API_TOKEN') && CF_API_TOKEN !== '') ? CF_API_TOKEN : getenv('CF_API_TOKEN');
+        $zone  = (defined('CF_ZONE_ID')   && CF_ZONE_ID   !== '') ? CF_ZONE_ID : getenv('CF_ZONE_ID');
+        if (empty($token) || empty($zone)) {
+            return null;
+        }
+
+        // CF wants UTC ISO 8601. Convert the server-local window.
+        $since = gmdate('Y-m-d\TH:i:s\Z', strtotime($win['StartDt']));
+        $until = gmdate('Y-m-d\TH:i:s\Z', strtotime($win['EndDt']));
+
+        $ork = $this->_cfRequestTotals($token, $zone, $since, $until, 'ork.amtgard.com', array('US', 'CA'));
+        if ($ork === null) {
+            return null;
+        }
+        $global = $this->_cfRequestTotals($token, $zone, $since, $until, null, null);
+
+        return array(
+            'Requests'             => $ork['requests'],
+            'Bytes'                => $ork['bytes'],
+            'CacheHits'            => $ork['cacheHits'],
+            'CachedBytes'          => $ork['cachedBytes'],
+            'OriginBytes'          => $ork['originBytes'],
+            'RequestsUS'           => $ork['byCountry']['US'] ?? 0,
+            'RequestsCA'           => $ork['byCountry']['CA'] ?? 0,
+            'BlockedOrChallenged'  => $this->_cfFirewallTotal($token, $zone, $win, 'ork.amtgard.com', array('US', 'CA')),
+            'RequestsGlobal'       => $global['requests'] ?? null,
+            'BytesGlobal'          => $global['bytes'] ?? null,
+            'BlockedGlobal'        => $global !== null ? $this->_cfFirewallTotal($token, $zone, $win, null, null) : null,
+            // v2 (2026-10-19): what actually reached a server we run, and how much
+            // of the edge-stopped traffic is Cloudflare's own challenge/block pages.
+            // See RecapPlatformBreakdown() for how the digest derives its buckets.
+            'OriginRequests'       => $ork['originRequests'],
+            'CfPageRequests'       => $ork['cfPageRequests'],
+            'CacheHitsGlobal'      => $global['cacheHits'] ?? null,
+            'CachedBytesGlobal'    => $global['cachedBytes'] ?? null,
+            'OriginRequestsGlobal' => $global['originRequests'] ?? null,
+            'CfPageRequestsGlobal' => $global['cfPageRequests'] ?? null,
+            'TopOtherHost'         => $global['topOtherHost'] ?? null,
+            'StatsVersion'         => 2,
+        );
+    }
+
+    // Cache statuses that mean Cloudflare went to an origin for the response.
+    // "revalidated" is a conditional request the origin answered with 304: cheap,
+    // but it still touched the server, so it counts as handled by us.
+    private const CF_ORIGIN_CACHE_STATUSES = '["dynamic","miss","expired","bypass","revalidated"]';
+
+    /**
+     * Fetch a complete, fresh PlatformStats block for an already-computed week,
+     * for the backfill (bin/backfill-recap-platform-stats.php). Returns null when
+     * Cloudflare cannot answer (no credentials, past retention, error) so the
+     * caller leaves the stored week untouched.
+     *
+     * The WHOLE block is refetched, not just the v2 keys: every bucket in the
+     * digest is a remainder of the others, so the numbers must come from one
+     * query window. Grafting fresh origin counts onto a total stored earlier
+     * (say, by a mid-week manual run) produces percentages over 100.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function RecapPlatformStatsForWeek($week_start)
+    {
+        $win = $this->_WeeklyRecapWindow($week_start);
+        $ps  = $this->_RecapCloudflareStats($win);
+        return is_array($ps) ? $ps : null;
+    }
+
+    /**
+     * Replace ONLY the PlatformStats block of a stored week's payload, with a
+     * single JSON_SET. Every other key (HumanUsers, the peerage and event lists,
+     * the hand-blanked bot-wave weeks) stays byte-for-byte as it was, and
+     * computed_at is left alone so the page footer still says when the recap
+     * itself was built. Returns false if no row exists for the week.
+     *
+     * @param array<string, mixed> $platform_stats a block from _RecapCloudflareStats()
+     */
+    public function ReplaceWeeklyRecapPlatformStats($week_start, array $platform_stats)
+    {
+        $win = $this->_WeeklyRecapWindow($week_start);
+        $r = $this->db->query(
+            "SELECT 1 AS present FROM " . DB_PREFIX . "weekly_recap WHERE week_start = :ws",
+            array(':ws' => $win['WeekStart'])
+        );
+        if (!$r || $r->size() == 0) {
+            return false;
+        }
+        // JSON_EXTRACT of the bound literal makes MariaDB store real JSON, not a
+        // string containing JSON.
+        $sql = "UPDATE " . DB_PREFIX . "weekly_recap
+				   SET payload_json = JSON_SET(payload_json, '$.PlatformStats', JSON_EXTRACT(:ps, '$'))
+				 WHERE week_start = :ws";
+        return $this->db->query($sql, array(':ws' => $win['WeekStart'], ':ps' => json_encode($platform_stats)));
+    }
+
+    /**
+     * PURE. Turn a stored PlatformStats block into the three buckets the recap
+     * digest reports, for one scope ('ork' = ork.amtgard.com US+CA, 'global' =
+     * the whole zone):
+     *
+     *   servers   requests Cloudflare forwarded to an origin we run
+     *   cache     answered from Cloudflare's cache
+     *   stopped   never reached us: malicious (blocked/challenged) + the
+     *             challenge/block pages those clients then fetched + other
+     *             edge responses (redirects, not-found, non-firewall 403s)
+     *
+     * 'other' is a remainder, so the three always sum to the total. Returns
+     * null when the block predates v2 (no OriginRequests) so the template can
+     * fall back to the old sentence for weeks that can no longer be backfilled.
+     *
+     * @param array<string, mixed> $ps
+     * @return array<string, int>|null
+     */
+    public static function RecapPlatformBreakdown(array $ps, $scope = 'ork')
+    {
+        $g = $scope === 'global' ? 'Global' : '';
+        $totalKey = $scope === 'global' ? 'RequestsGlobal' : 'Requests';
+        $cacheKey = $scope === 'global' ? 'CacheHitsGlobal' : 'CacheHits';
+        $malKey   = $scope === 'global' ? 'BlockedGlobal' : 'BlockedOrChallenged';
+        if (!isset($ps['OriginRequests' . $g]) || !isset($ps[$totalKey])) {
+            return null;
+        }
+        $total   = max(0, (int)$ps[$totalKey]);
+        $servers = max(0, (int)$ps['OriginRequests' . $g]);
+        $cache   = max(0, (int)($ps[$cacheKey] ?? 0));
+        $stopped = max(0, $total - $servers - $cache);
+        $mal     = min($stopped, max(0, (int)($ps[$malKey] ?? 0)));
+        $cfPages = min($stopped - $mal, max(0, (int)($ps['CfPageRequests' . $g] ?? 0)));
+        $other   = $stopped - $mal - $cfPages;
+        $pct = function ($n) use ($total) {
+            return $total > 0 ? (int)round(100 * $n / $total) : 0;
+        };
+        return array(
+            'total'       => $total,
+            'servers'     => $servers,
+            'cache'       => $cache,
+            'stopped'     => $stopped,
+            'malicious'   => $mal,
+            'cfPages'     => $cfPages,
+            'other'       => $other,
+            'serversPct'  => $pct($servers),
+            'cachePct'    => $pct($cache),
+            'stoppedPct'  => $pct($stopped),
+        );
+    }
+
+    /**
+     * PURE. Given per-host totals, cache hits and origin counts (host => count),
+     * return the host other than $exclude with the most edge-stopped traffic,
+     * or null when no other host appears. Stopped = total - cache - origin.
+     *
+     * @param array<string, int> $totals
+     * @param array<string, int> $hits
+     * @param array<string, int> $origins
+     * @return array{Host: string, Requests: int, Stopped: int}|null
+     */
+    public static function RecapTopOtherHost(array $totals, array $hits, array $origins, $exclude = 'ork.amtgard.com')
+    {
+        $best = null;
+        foreach ($totals as $host => $count) {
+            if ($host === $exclude || $host === '') {
+                continue;
+            }
+            $stopped = max(0, (int)$count - (int)($hits[$host] ?? 0) - (int)($origins[$host] ?? 0));
+            if ($best === null || $stopped > $best['Stopped']) {
+                $best = array('Host' => (string)$host, 'Requests' => (int)$count, 'Stopped' => $stopped);
+            }
+        }
+        return $best;
+    }
+
+    // One httpRequestsAdaptiveGroups round trip for a given (optional) host and
+    // (optional) country-list scope. $host/$countries null means "no filter on
+    // that dimension" — used for the whole-zone/worldwide numbers.
+    private function _cfRequestTotals($token, $zone, $since, $until, $host, $countries)
+    {
+        $filterParts = array('datetime_geq:$since', 'datetime_leq:$until');
+        if ($host !== null) {
+            $filterParts[] = 'clientRequestHTTPHost:"' . $host . '"';
+        }
+        if ($countries !== null) {
+            $filterParts[] = 'clientCountryName_in:["' . implode('","', $countries) . '"]';
+        }
+        $filter = '{' . implode(', ', $filterParts) . '}';
+        $withExtra = function ($extra) use ($filterParts) {
+            return '{' . implode(', ', array_merge($filterParts, array($extra))) . '}';
+        };
+        $cacheFilter  = $withExtra('cacheStatus:"hit"');
+        $originFilter = $withExtra('cacheStatus_in:' . self::CF_ORIGIN_CACHE_STATUSES);
+        $cfPageFilter = $withExtra('clientRequestPath_like:"/cdn-cgi/%"');
+
+        // Per-host breakdown only makes sense zone-wide (no host filter): it is
+        // what names the busiest OTHER host in the worldwide sentence.
+        $byHost = '';
+        if ($host === null) {
+            $byHost = '
+				byHost: httpRequestsAdaptiveGroups(limit:6, filter:' . $filter . ', orderBy:[count_DESC]) {
+					count dimensions { clientRequestHTTPHost }
+				}
+				byHostHit: httpRequestsAdaptiveGroups(limit:6, filter:' . $cacheFilter . ', orderBy:[count_DESC]) {
+					count dimensions { clientRequestHTTPHost }
+				}
+				byHostOrigin: httpRequestsAdaptiveGroups(limit:6, filter:' . $originFilter . ', orderBy:[count_DESC]) {
+					count dimensions { clientRequestHTTPHost }
+				}';
+        }
+
+        $gql = 'query($zone:String!,$since:Time!,$until:Time!) {
 			viewer { zones(filter:{zoneTag:$zone}) {
-				totals: httpRequestsAdaptiveGroups(limit:1, filter:{datetime_geq:$since, datetime_leq:$until, clientCountryName_in:["US","CA"]}) {
+				totals: httpRequestsAdaptiveGroups(limit:1, filter:' . $filter . ') {
 					count sum { edgeResponseBytes }
 				}
-				byCountry: httpRequestsAdaptiveGroups(limit:2, filter:{datetime_geq:$since, datetime_leq:$until, clientCountryName_in:["US","CA"]}, orderBy:[count_DESC]) {
+				byCountry: httpRequestsAdaptiveGroups(limit:2, filter:' . $filter . ', orderBy:[count_DESC]) {
 					count dimensions { clientCountryName }
 				}
-				cacheHit: httpRequestsAdaptiveGroups(limit:1, filter:{datetime_geq:$since, datetime_leq:$until, clientCountryName_in:["US","CA"], cacheStatus:"hit"}) {
+				cacheHit: httpRequestsAdaptiveGroups(limit:1, filter:' . $cacheFilter . ') {
 					count sum { edgeResponseBytes }
 				}
+				origin: httpRequestsAdaptiveGroups(limit:1, filter:' . $originFilter . ') {
+					count
+				}
+				cfPages: httpRequestsAdaptiveGroups(limit:1, filter:' . $cfPageFilter . ') {
+					count
+				}' . $byHost . '
 			} }
 		}';
-		$json = $this->_cfGraphQL($token, $gql, array(
-			'zone' => $zone, 'since' => $since, 'until' => $until,
-		));
-		$zones = $json['data']['viewer']['zones'][0] ?? null;
-		if (!is_array($zones) || empty($zones['totals'][0])) return null;
+        $json = $this->_cfGraphQL($token, $gql, array('zone' => $zone, 'since' => $since, 'until' => $until));
+        $zones = $json['data']['viewer']['zones'][0] ?? null;
+        if (!is_array($zones) || empty($zones['totals'][0])) {
+            return null;
+        }
 
-		$totals = $zones['totals'][0];
-		$cache  = $zones['cacheHit'][0] ?? array('count' => 0, 'sum' => array('edgeResponseBytes' => 0));
-		$by_country = array();
-		foreach (($zones['byCountry'] ?? array()) as $row) {
-			$by_country[$row['dimensions']['clientCountryName']] = (int)$row['count'];
-		}
-		$total_bytes  = (int)$totals['sum']['edgeResponseBytes'];
-		$cached_bytes = (int)($cache['sum']['edgeResponseBytes'] ?? 0);
-		return array(
-			'Requests'             => (int)$totals['count'],
-			'Bytes'                => $total_bytes,
-			'CacheHits'            => (int)$cache['count'],
-			'CachedBytes'          => $cached_bytes,
-			'OriginBytes'          => max(0, $total_bytes - $cached_bytes),
-			'RequestsUS'           => (int)($by_country['US'] ?? 0),
-			'RequestsCA'           => (int)($by_country['CA'] ?? 0),
-			'BlockedOrChallenged'  => $this->_cfFirewallTotal($token, $zone, $win),
-		);
-	}
+        $totals = $zones['totals'][0];
+        $cache  = $zones['cacheHit'][0] ?? array('count' => 0, 'sum' => array('edgeResponseBytes' => 0));
+        $by_country = array();
+        foreach (($zones['byCountry'] ?? array()) as $row) {
+            $by_country[$row['dimensions']['clientCountryName']] = (int)$row['count'];
+        }
+        $hostCounts = function ($key) use ($zones) {
+            $out = array();
+            foreach (($zones[$key] ?? array()) as $row) {
+                $out[$row['dimensions']['clientRequestHTTPHost']] = (int)$row['count'];
+            }
+            return $out;
+        };
+        $total_bytes  = (int)$totals['sum']['edgeResponseBytes'];
+        $cached_bytes = (int)($cache['sum']['edgeResponseBytes'] ?? 0);
+        return array(
+            'requests'       => (int)$totals['count'],
+            'bytes'          => $total_bytes,
+            'cacheHits'      => (int)$cache['count'],
+            'cachedBytes'    => $cached_bytes,
+            'originBytes'    => max(0, $total_bytes - $cached_bytes),
+            'byCountry'      => $by_country,
+            'originRequests' => (int)($zones['origin'][0]['count'] ?? 0),
+            'cfPageRequests' => (int)($zones['cfPages'][0]['count'] ?? 0),
+            'topOtherHost'   => $host === null
+                ? self::RecapTopOtherHost($hostCounts('byHost'), $hostCounts('byHostHit'), $hostCounts('byHostOrigin'))
+                : null,
+        );
+    }
 
-	// CF GraphQL POST. Returns decoded array or null on any failure.
-	private function _cfGraphQL($token, $query, $variables) {
-		$ch = curl_init('https://api.cloudflare.com/client/v4/graphql');
-		curl_setopt_array($ch, array(
-			CURLOPT_POST           => true,
-			CURLOPT_POSTFIELDS     => json_encode(array('query' => $query, 'variables' => $variables)),
-			CURLOPT_HTTPHEADER     => array(
-				'Authorization: Bearer ' . $token,
-				'Content-Type: application/json',
-			),
-			CURLOPT_RETURNTRANSFER => true,
-			CURLOPT_TIMEOUT        => 8,
-			CURLOPT_CONNECTTIMEOUT => 4,
-		));
-		$resp = curl_exec($ch);
-		$http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-		curl_close($ch);
-		if ($resp === false || $http !== 200) return null;
-		return json_decode($resp, true);
-	}
+    // CF GraphQL POST. Returns decoded array or null on any failure.
+    private function _cfGraphQL($token, $query, $variables)
+    {
+        $ch = curl_init('https://api.cloudflare.com/client/v4/graphql');
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode(array('query' => $query, 'variables' => $variables)),
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $token,
+                'Content-Type: application/json',
+            ),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ));
+        $resp = curl_exec($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp === false || $http !== 200) {
+            return null;
+        }
+        return json_decode($resp, true);
+    }
 
-	// Count of firewall events that actually stopped traffic: outright blocks plus
-	// challenges (managed/JS/classic). Excludes "skip", "allow", "log", and the
-	// *_solved/*_bypassed actions where the request ultimately got through.
-	//
-	// firewallEventsAdaptiveGroups has a 3-day max range per query on Pro plans,
-	// so we chunk the weekly window into three calls and sum.
-	private function _cfFirewallTotal($token, $zone, $win) {
-		$start_ts = strtotime($win['StartDt']);
-		$end_ts   = strtotime($win['EndDt']);
-		if ($end_ts <= $start_ts) return null;
-		$chunk_s  = (int)ceil(($end_ts - $start_ts) / 3);
+    /**
+     * Unique human visitors for the recap week, from Google Analytics (GA4).
+     *
+     * This is the only honest "how many people use the site" number we have:
+     * GA only counts clients that execute its JS, which excludes essentially all
+     * bots. (Cloudflare's edge "uniques" counts distinct IPs and is ~99% bot
+     * traffic — see PlatformStats, which is a traffic/security metric, not a
+     * user count. GA undercounts humans somewhat instead: ad-blockers.)
+     *
+     * Auth is a Google service account (GA4 property Viewer) — the JWT-bearer
+     * flow, signed locally with openssl, no SDK. Config lives beside the CF
+     * keys: GA4_PROPERTY_ID (numeric, GA Admin > Property settings) and
+     * GA4_SA_KEY_PATH (the service account's JSON key file, NOT in git).
+     * Returns null on any failure so the recap still ships without it.
+     *
+     * @return int|null distinct activeUsers over the week, or null
+     */
+    private function _RecapGaHumanUsers($win)
+    {
+        return $this->GaActiveUsers($win['WeekStart'], $win['WeekEnd']);
+    }
 
-		$gql = 'query($zone:String!,$since:Time!,$until:Time!) {
+    /**
+     * Distinct GA4 activeUsers between two Y-m-d dates (inclusive). Public so
+     * ad-hoc callers (bin/ga-probe.php, "how many users this month?") share the
+     * exact plumbing the weekly recap uses. Null on any failure or missing config.
+     *
+     * @param string $start_date Y-m-d
+     * @param string $end_date   Y-m-d
+     * @return int|null
+     */
+    public function GaActiveUsers($start_date, $end_date)
+    {
+        $property = (defined('GA4_PROPERTY_ID') && GA4_PROPERTY_ID !== '') ? GA4_PROPERTY_ID : getenv('GA4_PROPERTY_ID');
+        $key_path = (defined('GA4_SA_KEY_PATH') && GA4_SA_KEY_PATH !== '') ? GA4_SA_KEY_PATH : getenv('GA4_SA_KEY_PATH');
+        if (empty($property) || empty($key_path) || !is_readable($key_path)) {
+            return null;
+        }
+        $token = $this->_gaAccessToken($key_path);
+        if ($token === null) {
+            return null;
+        }
+
+        $ch = curl_init('https://analyticsdata.googleapis.com/v1beta/properties/' . rawurlencode($property) . ':runReport');
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode(array(
+                'dateRanges' => array(array('startDate' => $start_date, 'endDate' => $end_date)),
+                'metrics'    => array(array('name' => 'activeUsers')),
+            )),
+            CURLOPT_HTTPHEADER     => array(
+                'Authorization: Bearer ' . $token,
+                'Content-Type: application/json',
+            ),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ));
+        $resp = curl_exec($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp === false || $http !== 200) {
+            return null;
+        }
+        $json = json_decode($resp, true);
+        $value = $json['rows'][0]['metricValues'][0]['value'] ?? null;
+        return $value === null ? null : (int)$value;
+    }
+
+    /**
+     * OAuth2 access token for the GA service account (JWT-bearer grant).
+     * Scope is read-only analytics. Returns null on any failure.
+     */
+    private function _gaAccessToken($key_path)
+    {
+        $key = json_decode((string)file_get_contents($key_path), true);
+        if (!is_array($key) || empty($key['client_email']) || empty($key['private_key'])) {
+            return null;
+        }
+
+        $b64 = function ($data) {
+            return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+        };
+        $now = time();
+        $unsigned = $b64(json_encode(array('alg' => 'RS256', 'typ' => 'JWT')))
+            . '.' . $b64(json_encode(array(
+                'iss'   => $key['client_email'],
+                'scope' => 'https://www.googleapis.com/auth/analytics.readonly',
+                'aud'   => 'https://oauth2.googleapis.com/token',
+                'iat'   => $now,
+                'exp'   => $now + 3600,
+            )));
+        $signature = '';
+        if (!openssl_sign($unsigned, $signature, $key['private_key'], OPENSSL_ALGO_SHA256)) {
+            return null;
+        }
+        $jwt = $unsigned . '.' . $b64($signature);
+
+        $ch = curl_init('https://oauth2.googleapis.com/token');
+        curl_setopt_array($ch, array(
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query(array(
+                'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                'assertion'  => $jwt,
+            )),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_CONNECTTIMEOUT => 5,
+        ));
+        $resp = curl_exec($ch);
+        $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp === false || $http !== 200) {
+            return null;
+        }
+        $json = json_decode($resp, true);
+        return isset($json['access_token']) ? (string)$json['access_token'] : null;
+    }
+
+    // Count of firewall events that actually stopped traffic: outright blocks plus
+    // challenges (managed/JS/classic). Excludes "skip", "allow", "log", and the
+    // *_solved/*_bypassed actions where the request ultimately got through.
+    //
+    // firewallEventsAdaptiveGroups has a 3-day max range per query on Pro plans,
+    // so we chunk the weekly window into three calls and sum.
+    // $host/$countries null means unfiltered on that dimension (the whole-zone,
+    // worldwide scope). When set, matches the scope _cfRequestTotals() used for
+    // the "delivered" side, so the two numbers describe the same population —
+    // this used to be worldwide-always regardless of what Delivered measured,
+    // silently mismatching Delivered's US/CA-only scope.
+    private function _cfFirewallTotal($token, $zone, $win, $host = null, $countries = null)
+    {
+        $start_ts = strtotime($win['StartDt']);
+        $end_ts   = strtotime($win['EndDt']);
+        if ($end_ts <= $start_ts) {
+            return null;
+        }
+        $chunk_s  = (int)ceil(($end_ts - $start_ts) / 3);
+
+        $filterParts = array(
+            'datetime_geq:$since', 'datetime_leq:$until',
+            'action_in:["block","managed_challenge","challenge","js_challenge"]',
+        );
+        if ($host !== null) {
+            $filterParts[] = 'clientRequestHTTPHost:"' . $host . '"';
+        }
+        if ($countries !== null) {
+            $filterParts[] = 'clientCountryName_in:["' . implode('","', $countries) . '"]';
+        }
+        $filter = '{' . implode(', ', $filterParts) . '}';
+
+        $gql = 'query($zone:String!,$since:Time!,$until:Time!) {
 			viewer { zones(filter:{zoneTag:$zone}) {
-				fw: firewallEventsAdaptiveGroups(limit:1, filter:{datetime_geq:$since, datetime_leq:$until, action_in:["block","managed_challenge","challenge","js_challenge"]}) {
+				fw: firewallEventsAdaptiveGroups(limit:1, filter:' . $filter . ') {
 					count
 				}
 			} }
 		}';
 
-		$total = 0;
-		for ($i = 0; $i < 3; $i++) {
-			$c_start = $start_ts + $i * $chunk_s;
-			$c_end   = min($end_ts, $c_start + $chunk_s);
-			$json = $this->_cfGraphQL($token, $gql, array(
-				'zone'  => $zone,
-				'since' => gmdate('Y-m-d\TH:i:s\Z', $c_start),
-				'until' => gmdate('Y-m-d\TH:i:s\Z', $c_end),
-			));
-			if (!is_array($json) || !isset($json['data']['viewer']['zones'][0]['fw'][0])) return null;
-			$total += (int)$json['data']['viewer']['zones'][0]['fw'][0]['count'];
-		}
-		return $total;
-	}
+        $total = 0;
+        for ($i = 0; $i < 3; $i++) {
+            $c_start = $start_ts + $i * $chunk_s;
+            $c_end   = min($end_ts, $c_start + $chunk_s);
+            $json = $this->_cfGraphQL($token, $gql, array(
+                'zone'  => $zone,
+                'since' => gmdate('Y-m-d\TH:i:s\Z', $c_start),
+                'until' => gmdate('Y-m-d\TH:i:s\Z', $c_end),
+            ));
+            if (!is_array($json) || !isset($json['data']['viewer']['zones'][0]['fw'][0])) {
+                return null;
+            }
+            $total += (int)$json['data']['viewer']['zones'][0]['fw'][0]['count'];
+        }
+        return $total;
+    }
 
-	// Kingdom-scoped recap. Anchors on the global recap row (so we share its
-	// PlatformStats / ComputedAt and only produce kingdom recaps for weeks the
-	// cron has already computed). Cache key includes the global ComputedAt so a
-	// fresh cron run on Monday naturally orphans every prior kingdom cache —
-	// no explicit invalidation needed.
-	public function GetWeeklyRecapForKingdom($request = null) {
-		$kingdom_id = intval($request['KingdomId'] ?? 0);
-		if ($kingdom_id <= 0) return null;
+    // Kingdom-scoped recap. Anchors on the global recap row (so we share its
+    // PlatformStats / ComputedAt and only produce kingdom recaps for weeks the
+    // cron has already computed). Cache key includes the global ComputedAt so a
+    // fresh cron run on Monday naturally orphans every prior kingdom cache —
+    // no explicit invalidation needed.
+    public function GetWeeklyRecapForKingdom($request = null)
+    {
+        $kingdom_id = intval($request['KingdomId'] ?? 0);
+        if ($kingdom_id <= 0) {
+            return null;
+        }
 
-		$global = $this->ReadWeeklyRecap($request);
-		if (!is_array($global) || empty($global['WeekStart'])) return null;
-		$week_start  = $global['WeekStart'];
-		$computed_at = $global['ComputedAt'] ?? '';
+        $global = $this->ReadWeeklyRecap($request);
+        if (!is_array($global) || empty($global['WeekStart'])) {
+            return null;
+        }
+        $week_start  = $global['WeekStart'];
+        $computed_at = $global['ComputedAt'] ?? '';
 
-		$call = __CLASS__ . '.' . __FUNCTION__;
-		$key  = 'k' . $kingdom_id . '.w' . $week_start . '.c' . str_replace(array(' ', ':', '-'), '', $computed_at);
-		$cached = Ork3::$Lib->ghettocache->get($call, $key, 86400);
-		if ($cached !== false) return $cached;
+        $call = __CLASS__ . '.' . __FUNCTION__;
+        $key  = 'k' . $kingdom_id . '.w' . $week_start . '.c' . str_replace(array(' ', ':', '-'), '', $computed_at);
+        $cached = Ork3::$Lib->ghettocache->get($call, $key, 86400);
+        if ($cached !== false) {
+            return $cached;
+        }
 
-		$win = $this->_WeeklyRecapWindow($week_start);
-		$payload = array(
-			'WeekStart'        => $win['WeekStart'],
-			'WeekEnd'          => $win['WeekEnd'],
-			'KingdomId'        => $kingdom_id,
-			'Knightings'       => $this->_RecapPeerages($win, array('Knight'),  $kingdom_id),
-			'Masterhoods'      => $this->_RecapPeerages($win, array('Master'),  $kingdom_id),
-			'Paragons'         => $this->_RecapPeerages($win, array('Paragon'), $kingdom_id),
-			'TopEvents'        => $this->_RecapTopEvents($win, 3, $kingdom_id),
-			'TopParks'         => $this->_RecapTopParks($win, 3, $kingdom_id),
-			'NewPlayers'       => $this->_RecapNewPlayers($win, $kingdom_id),
-			'ReturningPlayers' => $this->_RecapReturningPlayers($win, 90, $kingdom_id),
-			'MilestoneEvents'  => $this->_RecapMilestoneEvents($win, 25, $kingdom_id),
-			// PlatformStats stays global — CF doesn't tell us per-kingdom traffic.
-			'PlatformStats'    => $global['PlatformStats'] ?? null,
-			'ComputedAt'       => $computed_at,
-		);
-		return Ork3::$Lib->ghettocache->cache($call, $key, $payload);
-	}
+        $win = $this->_WeeklyRecapWindow($week_start);
+        $payload = array(
+            'WeekStart'        => $win['WeekStart'],
+            'WeekEnd'          => $win['WeekEnd'],
+            'KingdomId'        => $kingdom_id,
+            'Knightings'       => $this->_RecapPeerages($win, array('Knight'), $kingdom_id),
+            'Masterhoods'      => $this->_RecapPeerages($win, array('Master'), $kingdom_id),
+            'Paragons'         => $this->_RecapPeerages($win, array('Paragon'), $kingdom_id),
+            'TopEvents'        => $this->_RecapTopEvents($win, 3, $kingdom_id),
+            'TopParks'         => $this->_RecapTopParks($win, 3, $kingdom_id),
+            'NewPlayers'       => $this->_RecapNewPlayers($win, $kingdom_id),
+            'ReturningPlayers' => $this->_RecapReturningPlayers($win, 90, $kingdom_id),
+            'MilestoneEvents'  => $this->_RecapMilestoneEvents($win, 25, $kingdom_id),
+            // PlatformStats stays global — CF doesn't tell us per-kingdom traffic.
+            'PlatformStats'    => $global['PlatformStats'] ?? null,
+            // Ditto HumanUsers — GA4 counts site visitors, not kingdom members.
+            'HumanUsers'       => $global['HumanUsers'] ?? null,
+            'ComputedAt'       => $computed_at,
+        );
+        return Ork3::$Lib->ghettocache->cache($call, $key, $payload);
+    }
 
-	// Active kingdoms for the dropdown picker, sorted by name. Tiny query, cheap
-	// to re-run per page load — wraps in ghettocache (1 hour) anyway because the
-	// list barely changes.
-	public function ListRecapKingdoms($request = null) {
-		$call = __CLASS__ . '.' . __FUNCTION__;
-		$key  = 'all';
-		$cached = Ork3::$Lib->ghettocache->get($call, $key, 3600);
-		if ($cached !== false) return $cached;
+    // Active kingdoms for the dropdown picker, sorted by name. Tiny query, cheap
+    // to re-run per page load — wraps in ghettocache (1 hour) anyway because the
+    // list barely changes.
+    public function ListRecapKingdoms($request = null)
+    {
+        $call = __CLASS__ . '.' . __FUNCTION__;
+        $key  = 'all';
+        $cached = Ork3::$Lib->ghettocache->get($call, $key, 3600);
+        if ($cached !== false) {
+            return $cached;
+        }
 
-		$sql = "SELECT kingdom_id, name FROM " . DB_PREFIX . "kingdom
+        $sql = "SELECT kingdom_id, name FROM " . DB_PREFIX . "kingdom
 				WHERE active = 'Active' AND kingdom_id > 0
 				ORDER BY name";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$out[] = array('KingdomId' => (int)$r->kingdom_id, 'Name' => $r->name);
-			}
-		}
-		return Ork3::$Lib->ghettocache->cache($call, $key, $out);
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array('KingdomId' => (int)$r->kingdom_id, 'Name' => $r->name);
+            }
+        }
+        return Ork3::$Lib->ghettocache->cache($call, $key, $out);
+    }
 
-	// Returns the most recent week_starts present in ork_weekly_recap, newest first.
-	// Used by the page to render prev/next and an archive picker.
-	public function ListRecapWeeks($limit = 26) {
-		$lim = max(1, intval($limit));
-		$sql = "SELECT week_start FROM " . DB_PREFIX . "weekly_recap
+    // Returns the most recent week_starts present in ork_weekly_recap, newest first.
+    // Used by the page to render prev/next and an archive picker.
+    public function ListRecapWeeks($limit = 26)
+    {
+        $lim = max(1, intval($limit));
+        $sql = "SELECT week_start FROM " . DB_PREFIX . "weekly_recap
 				ORDER BY week_start DESC LIMIT $lim";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) $out[] = $r->week_start;
-		}
-		return $out;
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = $r->week_start;
+            }
+        }
+        return $out;
+    }
 
-	// Persist a computed recap. Upserts on week_start so the cron is rerun-safe.
-	// Uses PDO parameter binding because the polyfill mysql_real_escape_string()
-	// in startup.php is a no-op and the JSON payload contains user-content strings.
-	public function StoreWeeklyRecap($payload) {
-		$sql = "INSERT INTO " . DB_PREFIX . "weekly_recap (week_start, computed_at, payload_json)
+    // Persist a computed recap. Upserts on week_start so the cron is rerun-safe.
+    // Uses PDO parameter binding because the polyfill mysql_real_escape_string()
+    // in startup.php is a no-op and the JSON payload contains user-content strings.
+    public function StoreWeeklyRecap($payload)
+    {
+        $sql = "INSERT INTO " . DB_PREFIX . "weekly_recap (week_start, computed_at, payload_json)
 				VALUES (:ws, NOW(), :json)
 				ON DUPLICATE KEY UPDATE computed_at = NOW(), payload_json = VALUES(payload_json)";
-		return $this->db->query($sql, array(
-			':ws'   => $payload['WeekStart'],
-			':json' => json_encode($payload),
-		));
-	}
+        return $this->db->query($sql, array(
+            ':ws'   => $payload['WeekStart'],
+            ':json' => json_encode($payload),
+        ));
+    }
 
-	private function _WeeklyRecapWindow($week_start = null) {
-		if (empty($week_start)) {
-			// "monday this week" returns today if today is Monday, else the most recent past Monday.
-			$this_monday = strtotime('monday this week');
-			$week_start  = date('Y-m-d', strtotime('-7 days', $this_monday));
-		}
-		$week_end = date('Y-m-d', strtotime($week_start . ' +6 days'));
-		return array(
-			'WeekStart' => $week_start,
-			'WeekEnd'   => $week_end,
-			'StartDt'   => $week_start . ' 00:00:00',
-			'EndDt'     => $week_end   . ' 23:59:59',
-		);
-	}
+    private function _WeeklyRecapWindow($week_start = null)
+    {
+        if (empty($week_start)) {
+            // "monday this week" returns today if today is Monday, else the most recent past Monday.
+            $this_monday = strtotime('monday this week');
+            $week_start  = date('Y-m-d', strtotime('-7 days', $this_monday));
+        }
+        $week_end = date('Y-m-d', strtotime($week_start . ' +6 days'));
+        return array(
+            'WeekStart' => $week_start,
+            'WeekEnd'   => $week_end,
+            'StartDt'   => $week_start . ' 00:00:00',
+            'EndDt'     => $week_end   . ' 23:59:59',
+        );
+    }
 
-	private function _RecapPeerages($win, $peerages, $kingdom_id = null) {
-		$list  = "'" . implode("','", array_map('mysql_real_escape_string', $peerages)) . "'";
-		$start = mysql_real_escape_string($win['WeekStart']);
-		$end   = mysql_real_escape_string($win['WeekEnd']);
-		$kid_clause = $kingdom_id ? ' AND m.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
-		$sql = "SELECT ma.awards_id, ma.date, ma.mundane_id, m.persona,
+    private function _RecapPeerages($win, $peerages, $kingdom_id = null)
+    {
+        $list  = "'" . implode("','", array_map('mysql_real_escape_string', $peerages)) . "'";
+        $start = mysql_real_escape_string($win['WeekStart']);
+        $end   = mysql_real_escape_string($win['WeekEnd']);
+        $kid_clause = $kingdom_id ? ' AND m.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+
+        // Resolve peerage and award id through the same alias-then-kingdomaward
+        // precedence, so both agree on which award a grant actually represents.
+        $peerage_expr  = 'COALESCE(alias.peerage, a.peerage)';
+        $award_expr    = 'COALESCE(alias.award_id, ka.award_id)';
+        $peerage_where = "$peerage_expr IN ($list)";
+        if (in_array('Master', $peerages, true)) {
+            // Pick up the masterhoods ork_award.peerage does not flag as such.
+            $unflagged     = implode(',', array_map('intval', self::RECAP_UNFLAGGED_MASTERHOOD_AWARD_IDS));
+            $peerage_where = "($peerage_where OR $award_expr IN ($unflagged))";
+            // Report them as masterhoods so the returned DTO is self-consistent.
+            $peerage_expr  = "CASE WHEN $award_expr IN ($unflagged) THEN 'Master' ELSE $peerage_expr END";
+        }
+        $sql = "SELECT ma.awards_id, ma.date, ma.mundane_id, m.persona,
 					   p.park_id, p.name AS park_name,
 					   k.kingdom_id, k.name AS kingdom_name,
-					   COALESCE(alias.peerage, a.peerage) AS peerage,
+					   $peerage_expr AS peerage,
 					   COALESCE(NULLIF(ma.custom_name, ''), ka.name, alias.name, a.name) AS award_name
 				FROM " . DB_PREFIX . "awards ma
 					JOIN " . DB_PREFIX . "mundane m ON m.mundane_id = ma.mundane_id
@@ -3918,40 +6107,41 @@ class Report  extends Ork3 {
 					LEFT JOIN " . DB_PREFIX . "award alias ON alias.award_id = ma.alias_award_id
 					LEFT JOIN " . DB_PREFIX . "park p ON p.park_id = m.park_id
 					LEFT JOIN " . DB_PREFIX . "kingdom k ON k.kingdom_id = m.kingdom_id
-				WHERE COALESCE(alias.peerage, a.peerage) IN ($list)
+				WHERE $peerage_where
 				  AND ma.revoked = 0
 				  AND ma.date >= '$start' AND ma.date <= '$end'
 				  $kid_clause
 				ORDER BY ma.date, m.persona";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$out[] = array(
-					'AwardsId'    => $r->awards_id,
-					'Date'        => $r->date,
-					'MundaneId'   => $r->mundane_id,
-					'Persona'     => $r->persona,
-					'AwardName'   => $r->award_name,
-					'Peerage'     => $r->peerage,
-					'ParkId'      => $r->park_id,
-					'ParkName'    => $r->park_name,
-					'KingdomId'   => $r->kingdom_id,
-					'KingdomName' => $r->kingdom_name,
-				);
-			}
-		}
-		return $out;
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'AwardsId'    => $r->awards_id,
+                    'Date'        => $r->date,
+                    'MundaneId'   => $r->mundane_id,
+                    'Persona'     => $r->persona,
+                    'AwardName'   => $r->award_name,
+                    'Peerage'     => $r->peerage,
+                    'ParkId'      => $r->park_id,
+                    'ParkName'    => $r->park_name,
+                    'KingdomId'   => $r->kingdom_id,
+                    'KingdomName' => $r->kingdom_name,
+                );
+            }
+        }
+        return $out;
+    }
 
-	// Single-occurrence (calendardetail-scoped). A 3-day event contributes up to 3
-	// separate occurrences if multiple days fall in the window.
-	private function _RecapTopEvents($win, $limit = 3, $kingdom_id = null) {
-		$start = mysql_real_escape_string($win['StartDt']);
-		$end   = mysql_real_escape_string($win['EndDt']);
-		$limit = intval($limit);
-		$kid_clause = $kingdom_id ? ' AND e.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
-		$sql = "SELECT e.event_id, e.name AS event_name,
+    // Single-occurrence (calendardetail-scoped). A 3-day event contributes up to 3
+    // separate occurrences if multiple days fall in the window.
+    private function _RecapTopEvents($win, $limit = 3, $kingdom_id = null)
+    {
+        $start = mysql_real_escape_string($win['StartDt']);
+        $end   = mysql_real_escape_string($win['EndDt']);
+        $limit = intval($limit);
+        $kid_clause = $kingdom_id ? ' AND e.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+        $sql = "SELECT e.event_id, e.name AS event_name,
 					   e.park_id, p.name AS park_name,
 					   e.kingdom_id, k.name AS kingdom_name,
 					   d.event_calendardetail_id, d.event_start,
@@ -3970,32 +6160,33 @@ class Report  extends Ork3 {
 				HAVING attendance > 0
 				ORDER BY attendance DESC, d.event_start ASC
 				LIMIT $limit";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$out[] = array(
-					'EventId'               => $r->event_id,
-					'EventName'             => $r->event_name,
-					'EventStart'            => $r->event_start,
-					'EventCalendarDetailId' => $r->event_calendardetail_id,
-					'ParkId'                => $r->park_id,
-					'ParkName'              => $r->park_name,
-					'KingdomId'             => $r->kingdom_id,
-					'KingdomName'           => $r->kingdom_name,
-					'Attendance'            => intval($r->attendance),
-				);
-			}
-		}
-		return $out;
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'EventId'               => $r->event_id,
+                    'EventName'             => $r->event_name,
+                    'EventStart'            => $r->event_start,
+                    'EventCalendarDetailId' => $r->event_calendardetail_id,
+                    'ParkId'                => $r->park_id,
+                    'ParkName'              => $r->park_name,
+                    'KingdomId'             => $r->kingdom_id,
+                    'KingdomName'           => $r->kingdom_name,
+                    'Attendance'            => intval($r->attendance),
+                );
+            }
+        }
+        return $out;
+    }
 
-	private function _RecapTopParks($win, $limit = 3, $kingdom_id = null) {
-		$start = mysql_real_escape_string($win['WeekStart']);
-		$end   = mysql_real_escape_string($win['WeekEnd']);
-		$limit = intval($limit);
-		$kid_clause = $kingdom_id ? ' AND a.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
-		$sql = "SELECT p.park_id, p.name AS park_name, p.has_heraldry,
+    private function _RecapTopParks($win, $limit = 3, $kingdom_id = null)
+    {
+        $start = mysql_real_escape_string($win['WeekStart']);
+        $end   = mysql_real_escape_string($win['WeekEnd']);
+        $limit = intval($limit);
+        $kid_clause = $kingdom_id ? ' AND a.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+        $sql = "SELECT p.park_id, p.name AS park_name, p.has_heraldry,
 					   k.kingdom_id, k.name AS kingdom_name,
 					   COUNT(DISTINCT a.mundane_id) AS attendance
 				FROM " . DB_PREFIX . "attendance a
@@ -4008,33 +6199,34 @@ class Report  extends Ork3 {
 				GROUP BY p.park_id
 				ORDER BY attendance DESC, p.name ASC
 				LIMIT $limit";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$out[] = array(
-					'ParkId'      => $r->park_id,
-					'ParkName'    => $r->park_name,
-					'HasHeraldry' => $r->has_heraldry,
-					'KingdomId'   => $r->kingdom_id,
-					'KingdomName' => $r->kingdom_name,
-					'Attendance'  => intval($r->attendance),
-				);
-			}
-		}
-		return $out;
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'ParkId'      => $r->park_id,
+                    'ParkName'    => $r->park_name,
+                    'HasHeraldry' => $r->has_heraldry,
+                    'KingdomId'   => $r->kingdom_id,
+                    'KingdomName' => $r->kingdom_name,
+                    'Attendance'  => intval($r->attendance),
+                );
+            }
+        }
+        return $out;
+    }
 
-	// New player = first ever attendance falls in the window. NOT EXISTS subquery
-	// mirrors the index-friendly pattern in GetNewPlayerAttendance().
-	private function _RecapNewPlayers($win, $kingdom_id = null) {
-		$start = mysql_real_escape_string($win['WeekStart']);
-		$end   = mysql_real_escape_string($win['WeekEnd']);
-		// Kingdom filter applies to the in-window attendance (where they first
-		// signed in). The prior-history NOT EXISTS subquery stays global — we
-		// want "truly new players who started here", not "new to this kingdom".
-		$kid_clause = $kingdom_id ? ' AND a_in.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
-		$sql = "SELECT m.mundane_id, m.persona,
+    // New player = first ever attendance falls in the window. NOT EXISTS subquery
+    // mirrors the index-friendly pattern in GetNewPlayerAttendance().
+    private function _RecapNewPlayers($win, $kingdom_id = null)
+    {
+        $start = mysql_real_escape_string($win['WeekStart']);
+        $end   = mysql_real_escape_string($win['WeekEnd']);
+        // Kingdom filter applies to the in-window attendance (where they first
+        // signed in). The prior-history NOT EXISTS subquery stays global — we
+        // want "truly new players who started here", not "new to this kingdom".
+        $kid_clause = $kingdom_id ? ' AND a_in.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+        $sql = "SELECT m.mundane_id, m.persona,
 					   p.park_id, p.name AS park_name,
 					   k.kingdom_id, k.name AS kingdom_name,
 					   MIN(a_in.date) AS first_date
@@ -4053,34 +6245,35 @@ class Report  extends Ork3 {
 				  )
 				GROUP BY m.mundane_id
 				ORDER BY first_date ASC, m.persona ASC";
-		$r = $this->db->query($sql);
-		$players = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$players[] = array(
-					'MundaneId'   => $r->mundane_id,
-					'Persona'     => $r->persona,
-					'FirstDate'   => $r->first_date,
-					'ParkId'      => $r->park_id,
-					'ParkName'    => $r->park_name,
-					'KingdomId'   => $r->kingdom_id,
-					'KingdomName' => $r->kingdom_name,
-				);
-			}
-		}
-		return array('Count' => count($players), 'Players' => $players);
-	}
+        $r = $this->db->query($sql);
+        $players = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $players[] = array(
+                    'MundaneId'   => $r->mundane_id,
+                    'Persona'     => $r->persona,
+                    'FirstDate'   => $r->first_date,
+                    'ParkId'      => $r->park_id,
+                    'ParkName'    => $r->park_name,
+                    'KingdomId'   => $r->kingdom_id,
+                    'KingdomName' => $r->kingdom_name,
+                );
+            }
+        }
+        return array('Count' => count($players), 'Players' => $players);
+    }
 
-	// Returning = attended this week + previous attendance was >= $gap_days before week start.
-	private function _RecapReturningPlayers($win, $gap_days = 90, $kingdom_id = null) {
-		$start = mysql_real_escape_string($win['WeekStart']);
-		$end   = mysql_real_escape_string($win['WeekEnd']);
-		$gap   = intval($gap_days);
-		// Kingdom filter applies to the in-window attendance. The "last prior
-		// attendance" subquery stays global so the gap reflects their TRUE last
-		// sign-in anywhere, not their last at this kingdom specifically.
-		$kid_clause = $kingdom_id ? ' AND a_in.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
-		$sql = "SELECT X.* FROM (
+    // Returning = attended this week + previous attendance was >= $gap_days before week start.
+    private function _RecapReturningPlayers($win, $gap_days = 90, $kingdom_id = null)
+    {
+        $start = mysql_real_escape_string($win['WeekStart']);
+        $end   = mysql_real_escape_string($win['WeekEnd']);
+        $gap   = intval($gap_days);
+        // Kingdom filter applies to the in-window attendance. The "last prior
+        // attendance" subquery stays global so the gap reflects their TRUE last
+        // sign-in anywhere, not their last at this kingdom specifically.
+        $kid_clause = $kingdom_id ? ' AND a_in.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+        $sql = "SELECT X.* FROM (
 				  SELECT m.mundane_id, m.persona,
 						 MIN(a_in.date) AS return_date,
 						 (SELECT MAX(a_pre.date)
@@ -4101,42 +6294,45 @@ class Report  extends Ork3 {
 				WHERE X.last_prior_date IS NOT NULL
 				  AND DATEDIFF(X.return_date, X.last_prior_date) >= $gap
 				ORDER BY DATEDIFF(X.return_date, X.last_prior_date) DESC, X.persona ASC";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$days = (int) round((strtotime($r->return_date) - strtotime($r->last_prior_date)) / 86400);
-				$out[] = array(
-					'MundaneId'     => $r->mundane_id,
-					'Persona'       => $r->persona,
-					'ReturnDate'    => $r->return_date,
-					'LastPriorDate' => $r->last_prior_date,
-					'DaysAway'      => $days,
-					'ParkId'        => $r->park_id,
-					'ParkName'      => $r->park_name,
-					'KingdomId'     => $r->kingdom_id,
-					'KingdomName'   => $r->kingdom_name,
-				);
-			}
-		}
-		return $out;
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $days = (int) round((strtotime($r->return_date) - strtotime($r->last_prior_date)) / 86400);
+                $out[] = array(
+                    'MundaneId'     => $r->mundane_id,
+                    'Persona'       => $r->persona,
+                    'ReturnDate'    => $r->return_date,
+                    'LastPriorDate' => $r->last_prior_date,
+                    'DaysAway'      => $days,
+                    'ParkId'        => $r->park_id,
+                    'ParkName'      => $r->park_name,
+                    'KingdomId'     => $r->kingdom_id,
+                    'KingdomName'   => $r->kingdom_name,
+                );
+            }
+        }
+        return $out;
+    }
 
-	// For each event occurrence in the window, count how many of the park's
-	// occurrences started on or before this one. Surface ones where that count is
-	// a multiple of $multiple. Counts occurrences (calendardetails), not distinct
-	// events, so a recurring fighter practice contributes one per week.
-	//
-	// Subquery excludes zero/placeholder event_start dates (some legacy rows have
-	// '0000-00-00') and tie-breaks on event_calendardetail_id so simultaneous
-	// occurrences get distinct numbers — otherwise some milestones get skipped.
-	private function _RecapMilestoneEvents($win, $multiple = 25, $kingdom_id = null) {
-		$start = mysql_real_escape_string($win['StartDt']);
-		$end   = mysql_real_escape_string($win['EndDt']);
-		$mul   = intval($multiple);
-		if ($mul <= 0) $mul = 25;
-		$kid_clause = $kingdom_id ? ' AND e.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
-		$sql = "SELECT * FROM (
+    // For each event occurrence in the window, count how many of the park's
+    // occurrences started on or before this one. Surface ones where that count is
+    // a multiple of $multiple. Counts occurrences (calendardetails), not distinct
+    // events, so a recurring fighter practice contributes one per week.
+    //
+    // Subquery excludes zero/placeholder event_start dates (some legacy rows have
+    // '0000-00-00') and tie-breaks on event_calendardetail_id so simultaneous
+    // occurrences get distinct numbers — otherwise some milestones get skipped.
+    private function _RecapMilestoneEvents($win, $multiple = 25, $kingdom_id = null)
+    {
+        $start = mysql_real_escape_string($win['StartDt']);
+        $end   = mysql_real_escape_string($win['EndDt']);
+        $mul   = intval($multiple);
+        if ($mul <= 0) {
+            $mul = 25;
+        }
+        $kid_clause = $kingdom_id ? ' AND e.kingdom_id IN (' . implode(',', array_map('intval', Ork3::$Lib->kingdom->GetStatsKingdomIds($kingdom_id))) . ')' : '';
+        $sql = "SELECT * FROM (
 				  SELECT e.event_id, e.name AS event_name,
 						 e.park_id, p.name AS park_name,
 						 e.kingdom_id, k.name AS kingdom_name,
@@ -4162,278 +6358,2005 @@ class Report  extends Ork3 {
 				WHERE M.event_number > 0
 				  AND M.event_number % $mul = 0
 				ORDER BY M.event_number DESC, M.event_start ASC";
-		$r = $this->db->query($sql);
-		$out = array();
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$out[] = array(
-					'EventId'               => $r->event_id,
-					'EventCalendarDetailId' => $r->event_calendardetail_id,
-					'EventName'             => $r->event_name,
-					'EventStart'            => $r->event_start,
-					'EventNumber'           => intval($r->event_number),
-					'ParkId'                => $r->park_id,
-					'ParkName'              => $r->park_name,
-					'KingdomId'             => $r->kingdom_id,
-					'KingdomName'           => $r->kingdom_name,
-				);
-			}
-		}
-		return $out;
-	}
+        $r = $this->db->query($sql);
+        $out = array();
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array(
+                    'EventId'               => $r->event_id,
+                    'EventCalendarDetailId' => $r->event_calendardetail_id,
+                    'EventName'             => $r->event_name,
+                    'EventStart'            => $r->event_start,
+                    'EventNumber'           => intval($r->event_number),
+                    'ParkId'                => $r->park_id,
+                    'ParkName'              => $r->park_name,
+                    'KingdomId'             => $r->kingdom_id,
+                    'KingdomName'           => $r->kingdom_name,
+                );
+            }
+        }
+        return $out;
+    }
 
 
-	/**
-	 * ReleaseFeatureUtilization
-	 *
-	 * Returns adoption / utilization metrics for recent ORK3 feature releases,
-	 * shaped as a generic releases[] -> features[] -> { kpis[], charts[] } tree
-	 * so the template renders entirely from data (future features = data-only).
-	 *
-	 * @return array See the Reports_release_utilization data contract.
-	 */
-	public function ReleaseFeatureUtilization() {
-		$p = DB_PREFIX;
+    /**
+     * ReleaseFeatureUtilization
+     *
+     * Returns adoption / utilization metrics for recent ORK3 feature releases,
+     * shaped as a generic releases[] -> features[] -> { kpis[], charts[] } tree
+     * so the template renders entirely from data (future features = data-only).
+     *
+     * @return array See the Reports_release_utilization data contract.
+     */
+    public function ReleaseFeatureUtilization()
+    {
+        $p = DB_PREFIX;
 
-		// --- denominators -----------------------------------------------------
-		// Active player definition: distinct players with >=1 attendance record
-		// in the rolling 2 years (CURDATE() - 2 years .. now).
-		$activePlayers = $this->_rfuScalar(
-			"SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}attendance` WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 2 YEAR)"
-		);
-		$playersWithDesign = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design`"
-		);
-		$activeRecommendations = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}recommendations` WHERE deleted_at IS NULL"
-		);
+        // --- denominators -----------------------------------------------------
+        // Active player definition: distinct players with >=1 attendance record
+        // in the rolling 2 years (CURDATE() - 2 years .. now).
+        $activePlayers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}attendance` WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 2 YEAR)"
+        );
+        $playersWithDesign = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design`"
+        );
+        $activeRecommendations = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}recommendations` WHERE deleted_at IS NULL"
+        );
 
-		// player-scoped pct helper (null when denom is 0).
-		$denom = $activePlayers;
-		$pct = function ($value) use ($denom) {
-			if ($denom <= 0) {
-				return null;
-			}
-			return round(($value / $denom) * 100, 1);
-		};
+        // player-scoped pct helper (null when denom is 0).
+        $denom = $activePlayers;
+        $pct = function ($value) use ($denom) {
+            if ($denom <= 0) {
+                return null;
+            }
+            return round(($value / $denom) * 100, 1);
+        };
 
-		// ====================================================================
-		// RELEASE 3.5.2 — Mask
-		// ====================================================================
+        // ====================================================================
+        // RELEASE 3.5.4 — Walker  (Qualification Tests)
+        // ====================================================================
+        // Qualification tests are opt-in per kingdom, so adoption here is
+        // KINGDOM-scoped, not player-scoped — $denom/$pct (active players) must
+        // not be used for it. The denominator is active kingdoms, which includes
+        // principalities and excludes Retired, deliberately matching the rule the
+        // migration itself seeds the config switches with.
+        $activeKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}kingdom` WHERE active = 'Active'"
+        );
+        $kPct = function ($value) use ($activeKingdoms) {
+            if ($activeKingdoms <= 0) {
+                return null;
+            }
+            return round(($value / $activeKingdoms) * 100, 1);
+        };
 
-		// --- nameplate KPIs (all from ork_mundane_design) --------------------
-		$dColorPrimary = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE color_primary IS NOT NULL AND color_primary <> ''"
-		);
-		$dPrefix = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE name_prefix IS NOT NULL AND name_prefix <> ''"
-		);
-		$dSuffix = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE name_suffix IS NOT NULL AND name_suffix <> ''"
-		);
-		$dGradient = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE hero_gradient IS NOT NULL AND hero_gradient <> ''"
-		);
-		$dFont = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE name_font IS NOT NULL AND name_font <> ''"
-		);
-		$dPronunciation = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE pronunciation_guide IS NOT NULL AND pronunciation_guide <> ''"
-		);
-		$dAbout = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane_design`
+        // --- qualification test adoption -------------------------------------
+        // The on/off switches live in ork_configuration rows, not a kingdom column,
+        // and the value is JSON round-tripped: the stored literal is '"1"' / '"0"'
+        // (a JSON-encoded string, quotes included), so compare against '"1"'. Each
+        // count joins ork_kingdom so the numerator can never exceed the active-
+        // kingdom denominator if a kingdom retires while its config row lingers.
+        $qualReeveKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom' AND cfg.`key` = 'QualTestReeveEnabled' AND cfg.value = '\"1\"'"
+        );
+        $qualCorporaKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom' AND cfg.`key` = 'QualTestCorporaEnabled' AND cfg.value = '\"1\"'"
+        );
+        $qualEitherKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT cfg.id) AS c
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom'
+			    AND cfg.`key` IN ('QualTestReeveEnabled', 'QualTestCorporaEnabled')
+			    AND cfg.value = '\"1\"'"
+        );
+        // "Takeable" is the honest companion to "enabled": a kingdom can flip the
+        // switch on and still have nothing a player could sit. It counts only where
+        // the test is enabled AND a published version exists AND that version holds
+        // at least as many ACTIVE questions as the kingdom's configured
+        // question_count. The app serves config defaults in-memory without writing
+        // an ork_qual_config row, so a missing row means the default of 10.
+        $qualTakeableKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT k.kingdom_id) AS c
+			   FROM `{$p}kingdom` k
+			   JOIN `{$p}configuration` cfg
+			     ON cfg.type = 'Kingdom' AND cfg.id = k.kingdom_id AND cfg.value = '\"1\"'
+			    AND cfg.`key` IN ('QualTestReeveEnabled', 'QualTestCorporaEnabled')
+			   JOIN `{$p}qual_question_set` qs
+			     ON qs.kingdom_id = k.kingdom_id AND qs.status = 'published'
+			    AND qs.test_type = CASE cfg.`key`
+			                           WHEN 'QualTestReeveEnabled' THEN 'reeve'
+			                           ELSE 'corpora'
+			                       END
+			   LEFT JOIN `{$p}qual_config` qc
+			     ON qc.kingdom_id = k.kingdom_id AND qc.test_type = qs.test_type
+			  WHERE k.active = 'Active'
+			    AND (
+			          SELECT COUNT(*) FROM `{$p}qual_set_question` sq
+			          JOIN `{$p}qual_question` q
+			            ON q.qual_question_id = sq.qual_question_id AND q.status = 'active'
+			          WHERE sq.qual_question_set_id = qs.qual_question_set_id
+			        ) >= COALESCE(qc.question_count, 10)"
+        );
+        $qualAdoptChart = array(
+            'id'         => 'rfu-qual-adoption',
+            'type'       => 'bar',
+            'title'      => 'Kingdoms with each test enabled',
+            'categories' => array("Reeve's Test", 'Corpora Test'),
+            'series'     => array(
+                array('name' => 'Enabled kingdoms', 'data' => array($qualReeveKingdoms, $qualCorporaKingdoms)),
+            ),
+        );
+        $featQualAdoption = array(
+            'key'         => 'qual_adoption',
+            'title'       => 'Qualification Tests',
+            'description' => "Kingdoms opt in to the Reeve's and Corpora qualification tests, then build and publish the version their players sit.",
+            'kpis' => array(
+                $this->_rfuKpi("Kingdoms with the Reeve's Test enabled", $qualReeveKingdoms, $activeKingdoms, $kPct($qualReeveKingdoms), "active kingdoms with QualTestReeveEnabled turned on", null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms with the Corpora Test enabled', $qualCorporaKingdoms, $activeKingdoms, $kPct($qualCorporaKingdoms), 'active kingdoms with QualTestCorporaEnabled turned on', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms with either test enabled', $qualEitherKingdoms, $activeKingdoms, $kPct($qualEitherKingdoms), 'active kingdoms running at least one of the two tests', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms with a takeable test', $qualTakeableKingdoms, $activeKingdoms, $kPct($qualTakeableKingdoms), 'enabled AND a published version with enough active questions — players can actually sit it', null, null, 'of active kingdoms'),
+            ),
+            'charts' => array($qualAdoptChart),
+            'links' => array(
+                $this->_rfuQualKingdomTile("Kingdoms with the Reeve's Test enabled", 'QualTestReeveEnabled'),
+                $this->_rfuQualKingdomTile('Kingdoms with the Corpora Test enabled', 'QualTestCorporaEnabled'),
+            ),
+        );
+
+        // --- question banks & versions ---------------------------------------
+        $qualQuestions = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question`");
+        $qualQActive   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question` WHERE status = 'active'");
+        $qualQArchived = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question` WHERE status = 'archived'");
+        $qualImported  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question` WHERE source_question_id IS NOT NULL");
+        // The pool others can actually import from. Mirrors the joins in
+        // QualTest::getLibraryQuestions() so the tile and the library agree:
+        // sharing turned on AND the question sits in a PUBLISHED set (a draft
+        // must never leak) AND it is active. Reeve-only, because the library
+        // itself is — Corpora questions are never shared. This is the global
+        // pool; no single kingdom sees all of it, since the library excludes
+        // your own kingdom and dedups against what you already hold.
+        $qualShared    = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT q.qual_question_id) AS c
+			   FROM `{$p}qual_question` q
+			   JOIN `{$p}qual_config` c
+			     ON c.kingdom_id = q.kingdom_id AND c.test_type = 'reeve' AND c.share_questions = 1
+			   JOIN `{$p}qual_set_question` sq ON sq.qual_question_id = q.qual_question_id
+			   JOIN `{$p}qual_question_set` s
+			     ON s.qual_question_set_id = sq.qual_question_set_id
+			    AND s.kingdom_id = q.kingdom_id AND s.test_type = 'reeve' AND s.status = 'published'
+			  WHERE q.test_type = 'reeve' AND q.status = 'active'"
+        );
+        $qualSets      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question_set`");
+        $qualSetsLive  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_question_set` WHERE status = 'published'");
+        $qualFlagged   = $this->_rfuScalar("SELECT COUNT(DISTINCT qual_question_id) AS c FROM `{$p}qual_report`");
+        $qualSetBreak  = $this->_rfuBreakdown(
+            "SELECT CASE status
+						WHEN 'draft'     THEN 'Draft'
+						WHEN 'published' THEN 'Published'
+						ELSE 'Retired'
+					END AS k, COUNT(*) AS c
+			   FROM `{$p}qual_question_set`
+			  GROUP BY k ORDER BY c DESC, k ASC"
+        );
+        $qualFlagBreak = $this->_rfuBreakdown(
+            "SELECT CASE reason
+						WHEN 'wording'  THEN 'Unclear wording'
+						WHEN 'correct'  THEN 'Incorrect answer'
+						WHEN 'outdated' THEN 'Outdated'
+						ELSE 'Other'
+					END AS k, COUNT(*) AS c
+			   FROM `{$p}qual_report`
+			  GROUP BY k ORDER BY c DESC, k ASC"
+        );
+        $featQualBank = array(
+            'key'         => 'qual_bank',
+            'title'       => 'Question Banks & Versions',
+            'description' => 'Managers write or import questions, gather them into named versions, and publish one version at a time as the live test.',
+            'kpis' => array(
+                $this->_rfuKpi('Questions created', $qualQuestions, null, null, 'rows in qual question'),
+                $this->_rfuKpi('Active questions', $qualQActive, null, null, 'questions available to be drawn into a test'),
+                $this->_rfuKpi('Archived questions', $qualQArchived, null, null, 'questions retired from the bank'),
+                $this->_rfuKpi('Available in the shared library', $qualShared, null, null, "active Reeve's-test questions offered by kingdoms that both share AND have a published version — the pool others can import from (Corpora questions are never shared)"),
+                $this->_rfuKpi('Imported from the shared library', $qualImported, null, null, 'questions copied from another kingdom rather than written locally'),
+                $this->_rfuKpi('Test versions created', $qualSets, null, null, 'rows in qual question set'),
+                $this->_rfuKpi('Published (live) versions', $qualSetsLive, null, null, "versions with status 'published' — one per kingdom and test type"),
+                $this->_rfuKpi('Questions flagged', $qualFlagged, null, null, 'distinct questions with an OPEN flag — flags are deleted once a manager resolves them, so this is not a lifetime total'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-qual-sets', 'bar', 'Test versions by status', $qualSetBreak, 'Versions'),
+                $this->_rfuChartFromBreakdown('rfu-qual-flags', 'bar', 'Open question flags by reason', $qualFlagBreak, 'Flags'),
+            ),
+        );
+
+        // --- shared question library opt-in -----------------------------------
+        // Opting in is ork_qual_config.share_questions = 1 on the kingdom's REEVE
+        // row (sharing is Reeve-only). No saved row means NOT opted in — the same
+        // rule QualTest::getConfig() and getLibraryQuestions() apply. One pass
+        // over the active kingdoms feeds the KPIs, the pie and both lists, so the
+        // counts and the lists can never disagree.
+        $shareRows = $this->_rfuQualSharingKingdoms();
+        $shareIn = array();
+        $shareOut = array();
+        $shareContributing = 0;
+        $shareOutNoReeve = 0;
+        foreach ($shareRows as $row) {
+            if ($row['shares']) {
+                if ($row['shared_q'] > 0) {
+                    $shareContributing++;
+                }
+                $shareIn[] = array(
+                    'label' => $row['name'],
+                    'route' => 'Kingdom/index/' . $row['kingdom_id'],
+                    'sub'   => ($row['shared_q'] > 0)
+                        ? number_format($row['shared_q']) . ' question' . ($row['shared_q'] === 1 ? '' : 's') . ' in the library'
+                        : 'No published questions shared yet',
+                );
+            } else {
+                if (!$row['reeve_on']) {
+                    $shareOutNoReeve++;
+                }
+                $shareOut[] = array(
+                    'label' => $row['name'],
+                    'route' => 'Kingdom/index/' . $row['kingdom_id'],
+                    'sub'   => $row['reeve_on'] ? "Reeve's Test enabled" : "Reeve's Test off",
+                );
+            }
+        }
+        $shareInCount  = count($shareIn);
+        $shareOutCount = count($shareOut);
+        // The pie splits opted-out kingdoms by whether they run the Reeve's Test
+        // at all, so "declined to share" reads apart from "nothing to share".
+        // Opting in takes precedence: a kingdom that opted in with its Reeve's
+        // Test switched off still has library access, so it stays "opted in" and
+        // the pie agrees with the KPI.
+        $featQualSharing = array(
+            'key'         => 'qual_sharing',
+            'title'       => 'Question Library Sharing',
+            'description' => "Kingdoms opt in to share their published Reeve's Test questions with other kingdoms, and in return can import from the shared library.",
+            'kpis' => array(
+                $this->_rfuKpi('Kingdoms opted in', $shareInCount, $activeKingdoms, $kPct($shareInCount), "active kingdoms with sharing turned on in their Reeve's Test settings", null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms opted out', $shareOutCount, $activeKingdoms, $kPct($shareOutCount), 'active kingdoms that have not opted in — never saving test settings counts as opted out', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Opted in and contributing', $shareContributing, $activeKingdoms, $kPct($shareContributing), 'opted in AND at least one active question in a published version — actually adding to the library', null, null, 'of active kingdoms'),
+            ),
+            'charts' => array(
+                array(
+                    'id'         => 'rfu-qual-sharing',
+                    'type'       => 'pie',
+                    'title'      => 'Active kingdoms: library sharing',
+                    'categories' => array('Kingdoms opted in', 'Kingdoms opted out', "Kingdoms without the Reeve's Test enabled"),
+                    'data'       => array($shareInCount, $shareOutCount - $shareOutNoReeve, $shareOutNoReeve),
+                ),
+            ),
+            'links' => array(
+                $this->_rfuLinkTile('Opted in to sharing', $shareIn),
+                $this->_rfuLinkTile('Opted out of sharing', $shareOut),
+            ),
+        );
+
+        // --- taking the test --------------------------------------------------
+        // ork_qual_attempt logs EVERY submission, pass or fail, so pass rate is
+        // per attempt (SUM(passed)/COUNT(*)). ork_qual_result is pass-only current
+        // standing (one row per player+kingdom+type) and must not be used for it.
+        $qualAttempts        = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt`");
+        $qualAttemptsReeve   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE test_type = 'reeve'");
+        $qualAttemptsCorpora = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE test_type = 'corpora'");
+        $qualPassed          = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE passed = 1");
+        $qualPassedReeve     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE passed = 1 AND test_type = 'reeve'");
+        $qualPassedCorpora   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_attempt` WHERE passed = 1 AND test_type = 'corpora'");
+        $qualTakers          = $this->_rfuScalar("SELECT COUNT(DISTINCT player_id) AS c FROM `{$p}qual_attempt`");
+        $qualCurrent         = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}qual_result` WHERE expires_at > NOW()");
+        $qualRate        = ($qualAttempts > 0) ? round(100.0 * $qualPassed / $qualAttempts, 1) : null;
+        $qualRateReeve   = ($qualAttemptsReeve > 0) ? round(100.0 * $qualPassedReeve / $qualAttemptsReeve, 1) : null;
+        $qualRateCorpora = ($qualAttemptsCorpora > 0) ? round(100.0 * $qualPassedCorpora / $qualAttemptsCorpora, 1) : null;
+        $qualOutcomeChart = array(
+            'id'         => 'rfu-qual-outcomes',
+            'type'       => 'column',
+            'title'      => 'Attempts by test type: passed vs failed',
+            'categories' => array("Reeve's Test", 'Corpora Test'),
+            'series'     => array(
+                array('name' => 'Passed', 'data' => array($qualPassedReeve, $qualPassedCorpora)),
+                array('name' => 'Failed', 'data' => array($qualAttemptsReeve - $qualPassedReeve, $qualAttemptsCorpora - $qualPassedCorpora)),
+            ),
+        );
+        $featQualTaking = array(
+            'key'         => 'qual_taking',
+            'title'       => 'Taking the Test',
+            'description' => 'Players sit their kingdom\'s published test and earn a dated qualification; every submission is logged, pass or fail.',
+            'kpis' => array(
+                $this->_rfuKpi('Tests taken', $qualAttempts, null, null, 'total submissions logged, pass or fail'),
+                $this->_rfuKpi("Reeve's Test attempts", $qualAttemptsReeve, null, null, "submissions of the Reeve's Test"),
+                $this->_rfuKpi('Corpora Test attempts', $qualAttemptsCorpora, null, null, 'submissions of the Corpora Test'),
+                $this->_rfuKpi('Pass rate', $qualRate, null, null, 'share of all attempts that passed — retakes count as separate attempts', null, null, null, '%', 1),
+                $this->_rfuKpi("Reeve's Test pass rate", $qualRateReeve, null, null, "share of Reeve's Test attempts that passed — retakes count separately", null, null, null, '%', 1),
+                $this->_rfuKpi('Corpora Test pass rate', $qualRateCorpora, null, null, 'share of Corpora Test attempts that passed — retakes count separately', null, null, null, '%', 1),
+                $this->_rfuKpi('Players who have taken a test', $qualTakers, null, null, 'distinct players with at least one attempt'),
+                $this->_rfuKpi('Players currently qualified', $qualCurrent, null, null, 'standing qualifications that have not yet expired'),
+            ),
+            'charts' => array($qualOutcomeChart),
+        );
+
+        // ====================================================================
+        // RELEASE 3.5.5 — Hydra  (Multi-Device Sessions)
+        // ====================================================================
+        // ork_session holds one row per live session and the login path prunes
+        // to three per player, so "current" counts read the table directly.
+        // user_agent stores a self-identified client label (Authorize `Client`
+        // field / X-ORK-Client header) when one was sent, else the browser UA.
+        $sessActive = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}session` WHERE expires > NOW()"
+        );
+        $sessPlayers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}session` WHERE expires > NOW()"
+        );
+        // The cap lives in one place; every threshold and label below derives
+        // from it so raising it again cannot leave this report counting the
+        // old number.
+        $sessCap = (int)Authorization::MAX_SESSIONS_PER_USER;
+        $sessMulti2 = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM (
+			    SELECT mundane_id FROM `{$p}session` WHERE expires > NOW()
+			     GROUP BY mundane_id HAVING COUNT(*) >= 2 AND COUNT(*) < {$sessCap}) m"
+        );
+        // At the cap: one more login silently evicts their oldest session. A
+        // persistently large number here is the signal the cap is too tight.
+        $sessAtCap = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM (
+			    SELECT mundane_id FROM `{$p}session` WHERE expires > NOW()
+			     GROUP BY mundane_id HAVING COUNT(*) >= {$sessCap}) m"
+        );
+        // Accumulating sign-in counts come from ork_signin_tally (anonymous
+        // per-day/per-client counters bumped in CreateSession) — ork_session
+        // itself can't provide them, since logout / Log Out Everywhere / the
+        // session cap all DELETE rows.
+        $signins7 = $this->_rfuScalar(
+            "SELECT COALESCE(SUM(signins),0) AS c FROM `{$p}signin_tally`
+			  WHERE day >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)"
+        );
+        $signins30 = $this->_rfuScalar(
+            "SELECT COALESCE(SUM(signins),0) AS c FROM `{$p}signin_tally`
+			  WHERE day >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)"
+        );
+        $signinDayBreak = $this->_rfuBreakdown(
+            "SELECT DATE_FORMAT(day, '%b %e') AS k, SUM(signins) AS c
+			   FROM `{$p}signin_tally`
+			  WHERE day >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+			  GROUP BY day ORDER BY day ASC"
+        );
+        $signinClientBreak = $this->_rfuBreakdown(
+            "SELECT client AS k, SUM(signins) AS c
+			   FROM `{$p}signin_tally`
+			  WHERE day >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+			  GROUP BY client ORDER BY c DESC LIMIT 14"
+        );
+        // Client breakdown is labeled in PHP so the buckets match the session
+        // list in the account menu (nav_session_client_label in the theme).
+        $sessClientCounts = array();
+        $r = $this->db->query("SELECT user_agent FROM `{$p}session` WHERE expires > NOW()");
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $label = ork_session_client_label($r->user_agent);
+                $sessClientCounts[$label] = ($sessClientCounts[$label] ?? 0) + 1;
+            }
+        }
+        arsort($sessClientCounts);
+        // Self-identified API clients always keep their own bar, however small —
+        // this chart doubles as the adoption tracker for the Client field.
+        // Prefix match: mORK labels carry a platform ("mORK on iOS").
+        $isApiClient = function ($label) {
+            return strncasecmp($label, 'jsork', 5) === 0 || strncasecmp($label, 'mORK', 4) === 0;
+        };
+        $sessClientBreak = array();
+        foreach ($sessClientCounts as $label => $count) {
+            if (count($sessClientBreak) >= 14 && !$isApiClient($label)) {
+                $sessClientBreak['Other'] = ($sessClientBreak['Other'] ?? 0) + $count;
+                continue;
+            }
+            $sessClientBreak[$label] = $count;
+        }
+        $sessClientRows = array();
+        foreach ($sessClientBreak as $label => $count) {
+            $sessClientRows[] = array('k' => $label, 'c' => $count);
+        }
+
+        $featSessions = array(
+            'key'         => 'multi_sessions',
+            'title'       => 'Multi-Device Sessions',
+            'description' => 'Up to ' . $sessCap . ' concurrent sign-ins per player, with session visibility and Log Out Everywhere in the account menu. Live snapshot: these numbers reflect sessions open right now, not a running total.',
+            'kpis' => array(
+                $this->_rfuKpi('Signed-in players right now', $sessPlayers, null, null, 'distinct players with at least one unexpired session'),
+                $this->_rfuKpi('Active sessions', $sessActive, null, null, 'unexpired sessions — at most ' . $sessCap . ' per player'),
+                $this->_rfuKpi('Players with 2+ sessions', $sessMulti2 + $sessAtCap, $sessPlayers, $sessPlayers > 0 ? round((($sessMulti2 + $sessAtCap) / $sessPlayers) * 100, 1) : null, $sessMulti2 . ' on 2–' . ($sessCap - 1) . ' sessions, ' . $sessAtCap . ' at the ' . $sessCap . '-session cap (their next sign-in evicts their oldest session — if the capped share stays high, the cap may be too tight)', null, null, 'of signed-in players'),
+                $this->_rfuKpi('Sign-ins (7 days)', $signins7, null, null, 'sessions created in the last 7 days — anonymous daily tally, no player attribution'),
+                $this->_rfuKpi('Sign-ins (30 days)', $signins30, null, null, 'sessions created in the last 30 days — anonymous daily tally, no player attribution'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-sessions-client', 'bar', 'Active sessions by client', $sessClientRows, 'Sessions'),
+                $this->_rfuChartFromBreakdown('rfu-signins-day', 'bar', 'Sign-ins per day (last 30 days, all clients)', $signinDayBreak, 'Sign-ins'),
+                $this->_rfuChartFromBreakdown('rfu-signins-client', 'bar', 'Sign-ins by client (last 30 days)', $signinClientBreak, 'Sign-ins'),
+            ),
+        );
+
+        // ====================================================================
+        // RELEASE 3.5.6 — Crown  (Court Planner + Recommendations workflow)
+        // ====================================================================
+        // Every Crown table/column below is new this release, so these are pure
+        // post-launch adoption counts. A before/after activity-impact pass is
+        // deferred for the same reason as Rose: with ~0 days of "after" window
+        // the comparison would be noise, not signal.
+        //
+        // ork_court has no creation timestamp (only `modified`), so nothing here
+        // is windowed by when a court was made. The one time axis available is
+        // court_date — the day the ceremony is held.
+        $activeParks = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}park` WHERE active = 'Active'"
+        );
+        // Share of an arbitrary base, for KPIs that are not player-scoped.
+        $share = function ($value, $of) {
+            if ($of <= 0) {
+                return null;
+            }
+            return round(($value / $of) * 100, 1);
+        };
+
+        // --- Court Planner ----------------------------------------------------
+        $courts        = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court`");
+        $courtsKingdom = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court` WHERE park_id = 0");
+        $courtsPark    = $courts - $courtsKingdom;
+        // A park court carries its kingdom_id too, so this is "kingdoms where a
+        // court has been planned at either level". Joined to active kingdoms so
+        // the numerator can never exceed the denominator.
+        $courtKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT c.kingdom_id) AS c
+               FROM `{$p}court` c
+               JOIN `{$p}kingdom` k ON k.kingdom_id = c.kingdom_id AND k.active = 'Active'"
+        );
+        $courtParks = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT c.park_id) AS c
+               FROM `{$p}court` c
+               JOIN `{$p}park` pk ON pk.park_id = c.park_id AND pk.active = 'Active'
+              WHERE c.park_id > 0"
+        );
+        $courtAwards = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id"
+        );
+        $courtAwardAvg = ($courts > 0) ? round($courtAwards / $courts, 1) : 0;
+        $courtFromRec  = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id
+              WHERE ca.recommendations_id IS NOT NULL AND ca.recommendations_id > 0"
+        );
+        $courtPlanners = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT created_by) AS c FROM `{$p}court` WHERE created_by > 0"
+        );
+        $courtStatusBreak = $this->_rfuBreakdown(
+            "SELECT CASE status
+                        WHEN 'draft'     THEN 'Planning (draft)'
+                        WHEN 'published' THEN 'Published'
+                        ELSE 'Complete'
+                    END AS k, COUNT(*) AS c
+               FROM `{$p}court`
+              GROUP BY status ORDER BY FIELD(status, 'draft', 'published', 'complete')"
+        );
+        $courtMonthBreak = $this->_rfuBreakdown(
+            "SELECT DATE_FORMAT(MIN(court_date), '%b %Y') AS k, COUNT(*) AS c
+               FROM `{$p}court`
+              WHERE court_date IS NOT NULL
+                AND court_date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+              GROUP BY DATE_FORMAT(court_date, '%Y-%m') ORDER BY MIN(court_date) ASC"
+        );
+        $featCourtPlanner = array(
+            'key'         => 'court_planner',
+            'title'       => 'Court Planner',
+            'description' => 'Kingdom and park officers plan a court as an ordered list of awards — drawn from recommendations or added directly — before it is held.',
+            'kpis' => array(
+                $this->_rfuKpi('Courts planned', $courts, null, null, $courtsKingdom . ' kingdom courts, ' . $courtsPark . ' park courts — every court created, whatever its status'),
+                $this->_rfuKpi('Kingdoms with a court planned', $courtKingdoms, $activeKingdoms, $kPct($courtKingdoms), 'active kingdoms where at least one court has been planned, at kingdom or park level', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Parks with a court planned', $courtParks, $activeParks, $share($courtParks, $activeParks), 'active parks with at least one park-level court', null, null, 'of active parks'),
+                $this->_rfuKpi('Officers planning courts', $courtPlanners, null, null, 'distinct players who have created a court'),
+                $this->_rfuKpi('Awards placed on a court', $courtAwards, null, null, 'award lines across every court, in any state'),
+                $this->_rfuKpi('Average awards per court', $courtAwardAvg, null, null, 'award lines ÷ courts planned', null, null, null, null, 1),
+                $this->_rfuKpi('Court awards drawn from a recommendation', $courtFromRec, $courtAwards, $share($courtFromRec, $courtAwards), 'lines added from a pending recommendation rather than as a walk-on award or title', null, null, 'of court awards'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-court-status', 'bar', 'Courts by status', $courtStatusBreak, 'Courts'),
+                $this->_rfuChartFromBreakdown('rfu-court-month', 'column', 'Courts by court date (last 12 months and upcoming)', $courtMonthBreak, 'Courts'),
+            ),
+            'links' => array(
+                $this->_rfuKingdomTileFromSql(
+                    'Kingdoms with a court planned',
+                    "SELECT k.kingdom_id, k.name, COUNT(*) AS c
+                       FROM `{$p}court` c
+                       JOIN `{$p}kingdom` k ON k.kingdom_id = c.kingdom_id AND k.active = 'Active'
+                      GROUP BY k.kingdom_id, k.name ORDER BY k.name ASC",
+                    'court',
+                    'courts'
+                ),
+            ),
+        );
+
+        // --- Running & recording court ---------------------------------------
+        // Granting at court only STAGES a line; nothing reaches the permanent
+        // award record until the court is finalized. 'given' is therefore the
+        // honest "awarded through a court" count, and 'staged' is reported
+        // beside it rather than folded in.
+        $courtsComplete = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court` WHERE status = 'complete'");
+        $courtsPrinted  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court` WHERE last_printed_at IS NOT NULL");
+        $courtsOverdue  = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}court`
+              WHERE status = 'published' AND court_date IS NOT NULL AND court_date < CURDATE()"
+        );
+        $awardsGiven    = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id
+              WHERE ca.status = 'given'"
+        );
+        $awardsStaged   = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id
+              WHERE ca.status = 'staged'"
+        );
+        $awardsSkipped  = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id
+              WHERE ca.status = 'cancelled'"
+        );
+        $recordReminders = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}notification` WHERE type = 'court_awaiting_record'"
+        );
+        $courtLineBreak = $this->_rfuBreakdown(
+            "SELECT CASE ca.status
+                        WHEN 'planned'   THEN 'Planned'
+                        WHEN 'announced' THEN 'Announced'
+                        WHEN 'staged'    THEN 'Granted, awaiting finalize'
+                        WHEN 'given'     THEN 'Given (on the record)'
+                        ELSE 'Skipped'
+                    END AS k, COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id
+              GROUP BY ca.status
+              ORDER BY FIELD(ca.status, 'planned', 'announced', 'staged', 'given', 'cancelled')"
+        );
+        // Mode is chosen when a court is published, so drafts (which only carry
+        // the column default) are left out.
+        $courtModeBreak = $this->_rfuBreakdown(
+            "SELECT CASE mode WHEN 'plan' THEN 'Plan (record afterwards)' ELSE 'Run at Court (live)' END AS k,
+                    COUNT(*) AS c
+               FROM `{$p}court`
+              WHERE status IN ('published', 'complete')
+              GROUP BY mode ORDER BY c DESC"
+        );
+        $recentCourtRows = array();
+        $this->db->Clear();
+        $r = $this->db->query(
+            "SELECT court_id, name, court_date
+               FROM `{$p}court`
+              WHERE status = 'complete' AND name <> ''
+              ORDER BY court_date DESC, court_id DESC LIMIT 5"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $recentCourtRows[] = array(
+                    'label' => $r->name,
+                    'route' => 'Reports/court&CourtId=' . (int)$r->court_id,
+                    'sub'   => $this->_rfuNiceDate($r->court_date),
+                );
+            }
+        }
+        $featCourtRun = array(
+            'key'         => 'court_run',
+            'title'       => 'Running & Recording Court',
+            'description' => 'A published court is run live or recorded afterwards from the printed packet. Grants are staged at court and written to the permanent award record when the court is completed.',
+            'kpis' => array(
+                $this->_rfuKpi('Courts completed', $courtsComplete, $courts, $share($courtsComplete, $courts), 'finalized — every grant on them is on the permanent award record', null, null, 'of courts planned'),
+                $this->_rfuKpi('Awards granted through a court', $awardsGiven, null, null, 'court lines committed to a player\'s award record at Finalize; ' . $awardsStaged . ' more granted at court and awaiting Finalize'),
+                $this->_rfuKpi('Awards skipped at court', $awardsSkipped, $courtAwards, $share($awardsSkipped, $courtAwards), 'planned lines marked skipped rather than given', null, null, 'of court awards'),
+                $this->_rfuKpi('Court packets printed', $courtsPrinted, $courts, $share($courtsPrinted, $courts), 'courts whose Order of Court / Court Record / Prep Sheet packet has been printed at least once', null, null, 'of courts planned'),
+                $this->_rfuKpi('Published courts past their date', $courtsOverdue, null, null, 'published, dated before today and not yet completed — held but still waiting to be recorded'),
+                $this->_rfuKpi('Unrecorded-court reminders sent', $recordReminders, null, null, 'in-app nudges sent to a court\'s recorder when a published court has nothing recorded'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-court-lines', 'bar', 'Court award lines by status', $courtLineBreak, 'Award lines'),
+                $this->_rfuChartFromBreakdown('rfu-court-mode', 'pie', 'Published courts: run live vs record afterwards', $courtModeBreak),
+            ),
+            'links' => array(
+                $this->_rfuLinkTile('Most recent completed courts (public Court Report)', $recentCourtRows),
+            ),
+        );
+
+        // --- Scrolls, regalia & artisan credit --------------------------------
+        // Tracking status: 0 = not tracked, 1 = in progress, 2 = done.
+        $scrollTracked  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award` WHERE scroll_status > 0");
+        $scrollDone     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award` WHERE scroll_status = 2");
+        $regaliaTracked = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award` WHERE regalia_status > 0");
+        $regaliaDone    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award` WHERE regalia_status = 2");
+        $scrollMakers   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award` WHERE scroll_maker_id > 0");
+        $regaliaMakers  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award` WHERE regalia_maker_id > 0");
+        $artisanCredits = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}court_award_artisan` WHERE mundane_id > 0");
+        $artisanPeople  = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT who) AS c FROM (
+                    SELECT scroll_maker_id AS who FROM `{$p}court_award` WHERE scroll_maker_id > 0
+                    UNION
+                    SELECT regalia_maker_id FROM `{$p}court_award` WHERE regalia_maker_id > 0
+                    UNION
+                    SELECT mundane_id FROM `{$p}court_award_artisan` WHERE mundane_id > 0
+                ) credited"
+        );
+        $featCourtArtisans = array(
+            'key'         => 'court_artisans',
+            'title'       => 'Scrolls, Regalia & Artisans',
+            'description' => 'Each court award can track whether its scroll and regalia are ready, and credit the people who made them — credit the herald reads out and the public Court Report prints.',
+            'kpis' => array(
+                $this->_rfuKpi('Awards with scroll tracking', $scrollTracked, $courtAwards, $share($scrollTracked, $courtAwards), $scrollDone . ' marked done, ' . ($scrollTracked - $scrollDone) . ' in progress', null, null, 'of court awards'),
+                $this->_rfuKpi('Awards with regalia tracking', $regaliaTracked, $courtAwards, $share($regaliaTracked, $courtAwards), $regaliaDone . ' marked done, ' . ($regaliaTracked - $regaliaDone) . ' in progress', null, null, 'of court awards'),
+                $this->_rfuKpi('Awards with a scroll maker credited', $scrollMakers, $courtAwards, $share($scrollMakers, $courtAwards), 'court awards naming the scribe who made the scroll', null, null, 'of court awards'),
+                $this->_rfuKpi('Awards with a regalia maker credited', $regaliaMakers, $courtAwards, $share($regaliaMakers, $courtAwards), 'court awards naming who made the belt, medallion or other regalia', null, null, 'of court awards'),
+                $this->_rfuKpi('Contributing artisan credits', $artisanCredits, null, null, 'additional "artisans to thank" entries beyond the scroll and regalia makers'),
+                $this->_rfuKpi('Artisans credited', $artisanPeople, $denom, $pct($artisanPeople), 'distinct players credited as a scroll maker, regalia maker or contributing artisan'),
+            ),
+            'charts' => array(
+                array(
+                    'id'         => 'rfu-court-tracking',
+                    'type'       => 'column',
+                    'title'      => 'Scroll and regalia readiness on tracked awards',
+                    'categories' => array('In progress', 'Done'),
+                    'series'     => array(
+                        array('name' => 'Scrolls', 'data' => array($scrollTracked - $scrollDone, $scrollDone)),
+                        array('name' => 'Regalia', 'data' => array($regaliaTracked - $regaliaDone, $regaliaDone)),
+                    ),
+                ),
+            ),
+        );
+
+        // --- Recommendations Manager workflow --------------------------------
+        // All four counts are of OPEN recommendations (deleted_at IS NULL): a
+        // recommendation that has since been granted or dismissed is resolved,
+        // so its flags no longer describe anything an officer is working with.
+        // The base is the same open-recommendation total the page header shows.
+        $recsPassed = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}recommendations`
+              WHERE deleted_at IS NULL AND passed_to_local = 1"
+        );
+        $recsPassedKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT m.kingdom_id) AS c
+               FROM `{$p}recommendations` recs
+               JOIN `{$p}mundane` m ON m.mundane_id = recs.mundane_id
+               JOIN `{$p}kingdom` k ON k.kingdom_id = m.kingdom_id AND k.active = 'Active'
+              WHERE recs.deleted_at IS NULL AND recs.passed_to_local = 1"
+        );
+        // snoozed_by_id is the mark that an officer snoozed a recommendation; only
+        // an explicit un-snooze clears it. A snooze stops hiding the recommendation
+        // on its own once the throne it was taken against changes hands, and a
+        // scope with a vacant throne stores no snoozed_monarch_id at all — so this
+        // is "open recommendations an officer has snoozed", lapsed ones included.
+        // A usage count, not a count of what is hidden right now.
+        $recsSnoozed = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}recommendations`
+              WHERE deleted_at IS NULL AND snoozed_by_id > 0"
+        );
+        $recsSnoozers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT snoozed_by_id) AS c FROM `{$p}recommendations`
+              WHERE deleted_at IS NULL AND snoozed_by_id > 0"
+        );
+        // Skipped court lines do not count: the recommendation is no longer
+        // actually queued for a court.
+        $recsOnCourt = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT ca.recommendations_id) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}recommendations` recs
+                 ON recs.recommendations_id = ca.recommendations_id AND recs.deleted_at IS NULL
+              WHERE ca.status <> 'cancelled'"
+        );
+        $recsGrantedAtCourt = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}court_award` ca
+               JOIN `{$p}court` c ON c.court_id = ca.court_id
+              WHERE ca.status = 'given'
+                AND ca.recommendations_id IS NOT NULL AND ca.recommendations_id > 0"
+        );
+        $recsAnonymous = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}recommendations`
+              WHERE deleted_at IS NULL AND mask_giver = 1"
+        );
+        $recsPassedByKingdom = $this->_rfuBreakdown(
+            "SELECT k.name AS k, COUNT(*) AS c
+               FROM `{$p}recommendations` recs
+               JOIN `{$p}mundane` m ON m.mundane_id = recs.mundane_id
+               JOIN `{$p}kingdom` k ON k.kingdom_id = m.kingdom_id
+              WHERE recs.deleted_at IS NULL AND recs.passed_to_local = 1
+              GROUP BY k.kingdom_id, k.name ORDER BY c DESC, k.name ASC LIMIT 10"
+        );
+        $featRecsWorkflow = array(
+            'key'         => 'recs_workflow',
+            'title'       => 'Recommendations Manager',
+            'description' => 'Officers work the recommendation queue from one page: pass a recommendation down to the recipient\'s park, snooze it until the next monarchy, put it on a court, or grant it directly.',
+            'kpis' => array(
+                $this->_rfuKpi('Recommendations passed to a local park', $recsPassed, $activeRecommendations, $share($recsPassed, $activeRecommendations), 'open recommendations a kingdom has approved and handed down for the recipient\'s park to give', null, null, 'of open recommendations'),
+                $this->_rfuKpi('Kingdoms passing recommendations down', $recsPassedKingdoms, $activeKingdoms, $kPct($recsPassedKingdoms), 'active kingdoms with at least one open passed-down recommendation', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Recommendations snoozed', $recsSnoozed, $activeRecommendations, $share($recsSnoozed, $activeRecommendations), 'open recommendations an officer has set aside until the next monarchy — includes snoozes that have since lapsed with a change of throne', null, null, 'of open recommendations'),
+                $this->_rfuKpi('Officers who have snoozed', $recsSnoozers, null, null, 'distinct officers behind those snoozes'),
+                $this->_rfuKpi('Recommendations on a court plan', $recsOnCourt, $activeRecommendations, $share($recsOnCourt, $activeRecommendations), 'open recommendations currently queued on a court (skipped lines excluded)', null, null, 'of open recommendations'),
+                $this->_rfuKpi('Recommendations granted through a court', $recsGrantedAtCourt, $awardsGiven, $share($recsGrantedAtCourt, $awardsGiven), 'finalized court awards that began as a recommendation', null, null, 'of awards granted through a court'),
+                $this->_rfuKpi('Anonymous recommendations', $recsAnonymous, $activeRecommendations, $share($recsAnonymous, $activeRecommendations), 'open recommendations submitted with the recommender\'s name hidden', null, null, 'of open recommendations'),
+            ),
+            'charts' => array(
+                array(
+                    'id'         => 'rfu-recs-actions',
+                    'type'       => 'bar',
+                    'title'      => 'Open recommendations by workflow state',
+                    'categories' => array('Passed to local park', 'Snoozed', 'On a court plan', 'Anonymous'),
+                    'series'     => array(
+                        array('name' => 'Recommendations', 'data' => array($recsPassed, $recsSnoozed, $recsOnCourt, $recsAnonymous)),
+                    ),
+                ),
+                $this->_rfuChartFromBreakdown('rfu-recs-passed-kingdom', 'bar', 'Passed-down recommendations by kingdom (top 10)', $recsPassedByKingdom, 'Recommendations'),
+            ),
+            'links' => array(
+                $this->_rfuKingdomTileFromSql(
+                    'Kingdoms passing recommendations down',
+                    "SELECT k.kingdom_id, k.name, COUNT(*) AS c
+                       FROM `{$p}recommendations` recs
+                       JOIN `{$p}mundane` m ON m.mundane_id = recs.mundane_id
+                       JOIN `{$p}kingdom` k ON k.kingdom_id = m.kingdom_id AND k.active = 'Active'
+                      WHERE recs.deleted_at IS NULL AND recs.passed_to_local = 1
+                      GROUP BY k.kingdom_id, k.name ORDER BY k.name ASC",
+                    'passed down',
+                    'passed down'
+                ),
+            ),
+        );
+
+        // --- Grant notifications ---------------------------------------------
+        // ork_notification is a general store, so every count is pinned to the
+        // two types this release writes when a recommendation is granted.
+        $notifRecommender = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}notification` WHERE type = 'rec_granted'"
+        );
+        $notifSeconder = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}notification` WHERE type = 'second_granted'"
+        );
+        $notifPlayers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}notification`
+              WHERE type IN ('rec_granted', 'second_granted')"
+        );
+        $notifRead = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}notification`
+              WHERE type IN ('rec_granted', 'second_granted') AND read_at IS NOT NULL"
+        );
+        $notifSent = $notifRecommender + $notifSeconder;
+        $featRecNotifications = array(
+            'key'         => 'rec_notifications',
+            'title'       => 'Grant Notifications',
+            'description' => 'When a recommendation is granted — at court or straight from the manager — the people who recommended and seconded it are told on their own profile.',
+            'kpis' => array(
+                $this->_rfuKpi('Recommenders told their recommendation was granted', $notifRecommender, null, null, 'notifications to the player who wrote the recommendation'),
+                $this->_rfuKpi('Seconders told the recommendation was granted', $notifSeconder, null, null, 'notifications to players who seconded it'),
+                $this->_rfuKpi('Players notified', $notifPlayers, $denom, $pct($notifPlayers), 'distinct players who have received at least one grant notification'),
+                $this->_rfuKpi('Grant notifications read', $notifRead, $notifSent, $share($notifRead, $notifSent), 'marked read by opening the Notifications card on the player\'s own profile', null, null, 'of grant notifications sent'),
+            ),
+            'charts' => array(
+                array(
+                    'id'         => 'rfu-rec-notif',
+                    'type'       => 'pie',
+                    'title'      => 'Grant notifications by recipient',
+                    'categories' => array('Recommenders', 'Seconders'),
+                    'data'       => array($notifRecommender, $notifSeconder),
+                ),
+            ),
+        );
+
+        // ====================================================================
+        // RELEASE 3.5.7 — Garber  (Surveys + Bonus Credit)
+        // ====================================================================
+        // Every survey and bonus-credit table is new this release, so these are
+        // pure post-launch adoption counts (no before/after impact pass).
+        //
+        // Privacy: respondents choose how much of their identity travels with
+        // their answers (full / partial / anonymous). Everything here is an
+        // org-wide aggregate COUNT — never a per-respondent or per-small-group
+        // breakdown — and test responses (is_test = 1, preview runs by the
+        // author) are excluded from every response metric.
+
+        // Fill a date-keyed count map into a gap-free series so a quiet day or
+        // week shows as 0 instead of silently vanishing from the trend chart.
+        // $step is 'day' or 'week'; weeks start on Monday to match the SQL.
+        $fillSeries = function (array $counts, $periods, $step) {
+            $rows = array();
+            $today = strtotime(date('Y-m-d'));
+            if ($step === 'week') {
+                $start = strtotime('monday this week', $today);
+                for ($i = $periods - 1; $i >= 0; $i--) {
+                    $ts = strtotime('-' . $i . ' week', $start);
+                    $rows[] = array('k' => date('M j', $ts), 'c' => (int)($counts[date('Y-m-d', $ts)] ?? 0));
+                }
+            } else {
+                for ($i = $periods - 1; $i >= 0; $i--) {
+                    $ts = strtotime('-' . $i . ' day', $today);
+                    $rows[] = array('k' => date('M j', $ts), 'c' => (int)($counts[date('Y-m-d', $ts)] ?? 0));
+                }
+            }
+            return $rows;
+        };
+        // Run a "SELECT <Y-m-d> AS k, COUNT(*) AS c" query into a k => c map.
+        $dateCounts = function ($sql) {
+            $map = array();
+            foreach ($this->_rfuBreakdown($sql) as $row) {
+                $map[$row['k']] = $row['c'];
+            }
+            return $map;
+        };
+
+        // --- Surveys created ---------------------------------------------------
+        $svTotal    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey`");
+        $svOpened   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey` WHERE opened_at IS NOT NULL");
+        $svOpenNow  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey` WHERE status = 'open'");
+        $svAuthors  = $this->_rfuScalar("SELECT COUNT(DISTINCT created_by) AS c FROM `{$p}survey` WHERE created_by > 0");
+        $svKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT s.scope_id) AS c
+               FROM `{$p}survey` s
+               JOIN `{$p}kingdom` k ON k.kingdom_id = s.scope_id AND k.active = 'Active'
+              WHERE s.scope_type = 'kingdom'"
+        );
+        $svParks = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT s.scope_id) AS c
+               FROM `{$p}survey` s
+               JOIN `{$p}park` pk ON pk.park_id = s.scope_id AND pk.active = 'Active'
+              WHERE s.scope_type = 'park'"
+        );
+        $svQuestions = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}survey_question` WHERE type NOT IN ('section', 'image')"
+        );
+        $svAvgQuestions = ($svTotal > 0) ? round($svQuestions / $svTotal, 1) : 0;
+        $svCloned = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_activity` WHERE action = 'clone'");
+        $svEventAudience = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}survey` WHERE audience_event_calendardetail_id IS NOT NULL AND audience_event_calendardetail_id > 0"
+        );
+        $svNarrowed = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}survey`
+              WHERE audience_recent_months > 0 OR audience_min_tenure_months > 0
+                 OR (audience_event_calendardetail_id IS NOT NULL AND audience_event_calendardetail_id > 0)"
+        );
+        $svSharing = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey` WHERE results_share <> 'none'");
+        $svStatusBreak = $this->_rfuBreakdown(
+            "SELECT CASE status
+                        WHEN 'draft'    THEN 'Draft'
+                        WHEN 'open'     THEN 'Open'
+                        WHEN 'closed'   THEN 'Closed'
+                        ELSE 'Archived'
+                    END AS k, COUNT(*) AS c
+               FROM `{$p}survey`
+              GROUP BY status ORDER BY FIELD(status, 'draft', 'open', 'closed', 'archived')"
+        );
+        $svScopeBreak = $this->_rfuBreakdown(
+            "SELECT CASE scope_type
+                        WHEN 'ork'     THEN 'Amtgard-wide'
+                        WHEN 'kingdom' THEN 'Kingdom'
+                        ELSE 'Park'
+                    END AS k, COUNT(*) AS c
+               FROM `{$p}survey`
+              GROUP BY scope_type ORDER BY FIELD(scope_type, 'ork', 'kingdom', 'park')"
+        );
+        $svWeekCounts = $dateCounts(
+            "SELECT DATE_FORMAT(DATE_SUB(DATE(created_at), INTERVAL WEEKDAY(created_at) DAY), '%Y-%m-%d') AS k, COUNT(*) AS c
+               FROM `{$p}survey`
+              WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+              GROUP BY k"
+        );
+        $svTypeBreak = $this->_rfuBreakdown(
+            "SELECT CASE type
+                        WHEN 'single'     THEN 'Single choice'
+                        WHEN 'multi'      THEN 'Multiple choice'
+                        WHEN 'dropdown'   THEN 'Dropdown'
+                        WHEN 'yesno'      THEN 'Yes / No'
+                        WHEN 'rating'     THEN 'Rating'
+                        WHEN 'nps'        THEN 'Net Promoter'
+                        WHEN 'matrix'     THEN 'Matrix'
+                        WHEN 'ranking'    THEN 'Ranking'
+                        WHEN 'pairwise'   THEN 'Pairwise ranking'
+                        WHEN 'short_text' THEN 'Short text'
+                        WHEN 'paragraph'  THEN 'Paragraph'
+                        WHEN 'number'     THEN 'Number'
+                        ELSE 'Date'
+                    END AS k, COUNT(*) AS c
+               FROM `{$p}survey_question`
+              WHERE type NOT IN ('section', 'image')
+              GROUP BY type ORDER BY c DESC, k ASC"
+        );
+        $featSurveysCreated = array(
+            'key'         => 'surveys_created',
+            'title'       => 'Surveys Created',
+            'description' => 'Amtgard, a kingdom or a park builds a survey, narrows who it is for, opens it, and later closes it. Counts are of surveys that still exist — a deleted survey is gone from every figure.',
+            'kpis' => array(
+                $this->_rfuKpi('Surveys created', $svTotal, null, null, 'every survey in the builder, whatever its status'),
+                $this->_rfuKpi('Surveys opened', $svOpened, $svTotal, $share($svOpened, $svTotal), 'surveys opened to respondents at least once — the rest are still drafts', null, null, 'of surveys created'),
+                $this->_rfuKpi('Surveys open right now', $svOpenNow, null, null, 'status Open — currently accepting responses'),
+                $this->_rfuKpi('Survey authors', $svAuthors, null, null, 'distinct players who have created a survey'),
+                $this->_rfuKpi('Kingdoms with a kingdom survey', $svKingdoms, $activeKingdoms, $kPct($svKingdoms), 'active kingdoms that have created a survey scoped to the kingdom', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Parks with a park survey', $svParks, $activeParks, $share($svParks, $activeParks), 'active parks that have created a survey scoped to the park', null, null, 'of active parks'),
+                $this->_rfuKpi('Questions written', $svQuestions, null, null, 'answerable questions across all surveys — section headings and images are not counted'),
+                $this->_rfuKpi('Average questions per survey', $svAvgQuestions, null, null, 'answerable questions ÷ surveys created', null, null, null, null, 1),
+                $this->_rfuKpi('Surveys cloned', $svCloned, null, null, 'times a survey was cloned to run again or somewhere else — read from the activity log, so it includes clones whose survey was later deleted'),
+                $this->_rfuKpi('Surveys with a narrowed audience', $svNarrowed, $svTotal, $share($svNarrowed, $svTotal), 'a recent-sign-in, minimum-tenure or event-attendance filter on top of the scope (the default "not retired" filter is not counted)', null, null, 'of surveys created'),
+                $this->_rfuKpi('Surveys aimed at an event', $svEventAudience, $svTotal, $share($svEventAudience, $svTotal), 'audience limited to players who attended a particular event', null, null, 'of surveys created'),
+                $this->_rfuKpi('Surveys sharing results', $svSharing, $svTotal, $share($svSharing, $svTotal), 'results shared down to kingdoms or parks, as responses arrive or after close', null, null, 'of surveys created'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-survey-status', 'bar', 'Surveys by status', $svStatusBreak, 'Surveys'),
+                $this->_rfuChartFromBreakdown('rfu-survey-scope', 'pie', 'Surveys by scope', $svScopeBreak),
+                $this->_rfuChartFromBreakdown('rfu-survey-created', 'column', 'Surveys created per week (last 12 weeks)', $fillSeries($svWeekCounts, 12, 'week'), 'Surveys'),
+                $this->_rfuChartFromBreakdown('rfu-survey-types', 'bar', 'Questions by type', $svTypeBreak, 'Questions'),
+            ),
+            'links' => array(
+                $this->_rfuKingdomTileFromSql(
+                    'Kingdoms with a kingdom survey',
+                    "SELECT k.kingdom_id, k.name, COUNT(*) AS c
+                       FROM `{$p}survey` s
+                       JOIN `{$p}kingdom` k ON k.kingdom_id = s.scope_id AND k.active = 'Active'
+                      WHERE s.scope_type = 'kingdom'
+                      GROUP BY k.kingdom_id, k.name ORDER BY k.name ASC",
+                    'survey',
+                    'surveys'
+                ),
+            ),
+        );
+
+        // --- Survey responses & trends -----------------------------------------
+        // survey_participation holds one row per player per survey and is only
+        // written for real (non-test) submissions, so it is the clean count of
+        // distinct completions; survey_start is the matching count of players
+        // who opened the runner, giving an honest completion rate.
+        $rsTotal = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_response` WHERE is_test = 0");
+        $rsSurveys = $this->_rfuScalar("SELECT COUNT(DISTINCT survey_id) AS c FROM `{$p}survey_response` WHERE is_test = 0");
+        $rsAvgPerSurvey = ($rsSurveys > 0) ? round($rsTotal / $rsSurveys, 1) : 0;
+        $rs7  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_response` WHERE is_test = 0 AND submitted_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+        $rs30 = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_response` WHERE is_test = 0 AND submitted_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+        $rsRespondents = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}survey_participation`");
+        $rsActiveRespondents = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT p.mundane_id) AS c
+               FROM `{$p}survey_participation` p
+              WHERE EXISTS (SELECT 1 FROM `{$p}attendance` a
+                             WHERE a.mundane_id = p.mundane_id AND a.`date` >= DATE_SUB(CURDATE(), INTERVAL 2 YEAR))"
+        );
+        $rsStarts      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_start`");
+        $rsCompletions = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_participation`");
+        $rsCompletionRate = ($rsStarts > 0) ? min(100.0, round(100.0 * $rsCompletions / $rsStarts, 1)) : null;
+        $rsInProgress  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_draft`");
+        // Duration is stored only for fully linked responses (partial responses
+        // have it stripped by design), so this is the average over those.
+        $rsAvgMinutes = 0;
+        $this->db->Clear();
+        $r = $this->db->query(
+            "SELECT AVG(duration_seconds) AS a FROM `{$p}survey_response`
+              WHERE is_test = 0 AND duration_seconds IS NOT NULL AND duration_seconds > 0"
+        );
+        if ($r !== false && $r->next() && $r->a !== null) {
+            $rsAvgMinutes = round(((float)$r->a) / 60, 1);
+        }
+        $rsConsent = array('full' => 0, 'partial' => 0, 'anonymous' => 0);
+        foreach ($this->_rfuBreakdown("SELECT consent AS k, COUNT(*) AS c FROM `{$p}survey_response` WHERE is_test = 0 GROUP BY consent") as $row) {
+            $rsConsent[$row['k']] = $row['c'];
+        }
+        $rsLinkedPct = ($rsTotal > 0) ? round(100.0 * $rsConsent['full'] / $rsTotal, 1) : null;
+        $rsDayCounts = $dateCounts(
+            "SELECT DATE_FORMAT(submitted_at, '%Y-%m-%d') AS k, COUNT(*) AS c
+               FROM `{$p}survey_response`
+              WHERE is_test = 0 AND submitted_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+              GROUP BY k"
+        );
+        $rsWeekCounts = $dateCounts(
+            "SELECT DATE_FORMAT(DATE_SUB(DATE(submitted_at), INTERVAL WEEKDAY(submitted_at) DAY), '%Y-%m-%d') AS k, COUNT(*) AS c
+               FROM `{$p}survey_response`
+              WHERE is_test = 0 AND submitted_at >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+              GROUP BY k"
+        );
+        $rsScopeBreak = $this->_rfuBreakdown(
+            "SELECT CASE s.scope_type
+                        WHEN 'ork'     THEN 'Amtgard-wide'
+                        WHEN 'kingdom' THEN 'Kingdom'
+                        ELSE 'Park'
+                    END AS k, COUNT(*) AS c
+               FROM `{$p}survey_response` r
+               JOIN `{$p}survey` s ON s.survey_id = r.survey_id
+              WHERE r.is_test = 0
+              GROUP BY s.scope_type ORDER BY FIELD(s.scope_type, 'ork', 'kingdom', 'park')"
+        );
+        // Top surveys by volume — titles only, never respondent detail.
+        $rsTopBreak = $this->_rfuBreakdown(
+            "SELECT s.title AS k, COUNT(*) AS c
+               FROM `{$p}survey_response` r
+               JOIN `{$p}survey` s ON s.survey_id = r.survey_id
+              WHERE r.is_test = 0
+              GROUP BY s.survey_id, s.title ORDER BY c DESC, s.survey_id ASC LIMIT 8"
+        );
+        $consentChart = array(
+            'id'         => 'rfu-survey-consent',
+            'type'       => 'pie',
+            'title'      => 'Responses by the respondent\'s data-gate choice',
+            'categories' => array('Linked to their profile', 'Kingdom only, no name', 'Fully anonymous'),
+            'data'       => array($rsConsent['full'], $rsConsent['partial'], $rsConsent['anonymous']),
+        );
+        $featSurveyResponses = array(
+            'key'         => 'survey_responses',
+            'title'       => 'Survey Responses & Trends',
+            'description' => 'Eligible players answer an open survey from My Amtgard or a share link. Test submissions by survey authors are excluded; every figure is an org-wide count, never broken out by respondent.',
+            'kpis' => array(
+                $this->_rfuKpi('Responses submitted', $rsTotal, null, null, 'completed, non-test responses across every survey'),
+                $this->_rfuKpi('Responses in the last 7 days', $rs7, null, null, 'completed responses submitted in the past week'),
+                $this->_rfuKpi('Responses in the last 30 days', $rs30, null, null, 'completed responses submitted in the past month'),
+                $this->_rfuKpi('Surveys with a response', $rsSurveys, $svTotal, $share($rsSurveys, $svTotal), 'surveys that have drawn at least one completed response', null, null, 'of surveys created'),
+                $this->_rfuKpi('Average responses per survey', $rsAvgPerSurvey, null, null, 'responses ÷ surveys that have received any', null, null, null, null, 1),
+                $this->_rfuKpi('Players who have answered a survey', $rsRespondents, null, null, 'distinct players with at least one completed survey, whatever privacy choice they made'),
+                $this->_rfuKpi('Active players who have answered a survey', $rsActiveRespondents, $denom, $pct($rsActiveRespondents), 'distinct respondents who also attended in the past 2 years — the active-player share that has taken part', null, null, 'of active players'),
+                $this->_rfuKpi('Completion rate', $rsCompletionRate, null, null, 'players who finished a survey ÷ players who opened it to answer', null, null, null, '%', 1),
+                $this->_rfuKpi('Surveys in progress', $rsInProgress, null, null, 'saved drafts — a player part-way through a survey they can resume'),
+                $this->_rfuKpi('Average time to complete', $rsAvgMinutes, null, null, 'minutes, across responses that carry a duration (only fully linked responses do — it is withheld from the others to protect identity)', null, null, null, ' min', 1),
+                $this->_rfuKpi('Responses linked to a profile', $rsConsent['full'], $rsTotal, $rsLinkedPct, 'respondents who chose the full-identity option on the data gate', null, null, 'of responses'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-survey-resp-day', 'column', 'Responses per day (last 30 days)', $fillSeries($rsDayCounts, 30, 'day'), 'Responses'),
+                $this->_rfuChartFromBreakdown('rfu-survey-resp-week', 'column', 'Responses per week (last 12 weeks)', $fillSeries($rsWeekCounts, 12, 'week'), 'Responses'),
+                $consentChart,
+                $this->_rfuChartFromBreakdown('rfu-survey-resp-scope', 'pie', 'Responses by survey scope', $rsScopeBreak),
+                $this->_rfuChartFromBreakdown('rfu-survey-resp-top', 'bar', 'Most-answered surveys', $rsTopBreak, 'Responses'),
+            ),
+        );
+
+        // --- Survey bonus credit ------------------------------------------------
+        // A survey's credit is a bonus_credit_category (source_type 'survey')
+        // switched on by a kingdom or park (survey_credit). Each grant is one
+        // survey_credit_grant row pointing at the bonus_credit it created.
+        // "Granted" excludes revoked credits; revoked ones are reported apart.
+        $scSurveys = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT survey_id) AS c FROM `{$p}survey_credit` WHERE disabled_at IS NULL"
+        );
+        $scKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT sc.grantor_id) AS c
+               FROM `{$p}survey_credit` sc
+               JOIN `{$p}kingdom` k ON k.kingdom_id = sc.grantor_id AND k.active = 'Active'
+              WHERE sc.grantor_type = 'kingdom' AND sc.disabled_at IS NULL"
+        );
+        $scParks = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT sc.grantor_id) AS c
+               FROM `{$p}survey_credit` sc
+               JOIN `{$p}park` pk ON pk.park_id = sc.grantor_id AND pk.active = 'Active'
+              WHERE sc.grantor_type = 'park' AND sc.disabled_at IS NULL"
+        );
+        $scGranted = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}survey_credit_grant` g
+               JOIN `{$p}bonus_credit` b ON b.bonus_credit_id = g.bonus_credit_id AND b.revoked_at IS NULL"
+        );
+        $scRevoked = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}survey_credit_grant` g
+               JOIN `{$p}bonus_credit` b ON b.bonus_credit_id = g.bonus_credit_id AND b.revoked_at IS NOT NULL"
+        );
+        $scValue = 0.0;
+        $this->db->Clear();
+        $r = $this->db->query(
+            "SELECT COALESCE(SUM(b.credits), 0) AS v
+               FROM `{$p}survey_credit_grant` g
+               JOIN `{$p}bonus_credit` b ON b.bonus_credit_id = g.bonus_credit_id AND b.revoked_at IS NULL"
+        );
+        if ($r !== false && $r->next()) {
+            $scValue = (float)$r->v;
+        }
+        $scPlayers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT g.mundane_id) AS c
+               FROM `{$p}survey_credit_grant` g
+               JOIN `{$p}bonus_credit` b ON b.bonus_credit_id = g.bonus_credit_id AND b.revoked_at IS NULL"
+        );
+        // Of the surveys that offer credit, the share of linked respondents who
+        // earned it. A respondent only earns credit when they link their profile,
+        // so the denominator is full-consent responses to credit-bearing surveys.
+        $scEligibleResponses = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}survey_response` r
+              WHERE r.is_test = 0 AND r.consent = 'full'
+                AND r.survey_id IN (SELECT survey_id FROM `{$p}survey_credit`)"
+        );
+        $scEarnedPct = $share(min($scGranted, $scEligibleResponses), $scEligibleResponses);
+        $scGrantorBreak = $this->_rfuBreakdown(
+            "SELECT CASE sc.grantor_type WHEN 'kingdom' THEN 'Kingdom-funded' ELSE 'Park-funded' END AS k, COUNT(*) AS c
+               FROM `{$p}survey_credit_grant` g
+               JOIN `{$p}survey_credit` sc ON sc.credit_id = g.credit_id
+               JOIN `{$p}bonus_credit` b ON b.bonus_credit_id = g.bonus_credit_id AND b.revoked_at IS NULL
+              GROUP BY sc.grantor_type ORDER BY FIELD(sc.grantor_type, 'kingdom', 'park')"
+        );
+        $scWeekCounts = $dateCounts(
+            "SELECT DATE_FORMAT(DATE_SUB(DATE(b.granted_at), INTERVAL WEEKDAY(b.granted_at) DAY), '%Y-%m-%d') AS k, COUNT(*) AS c
+               FROM `{$p}survey_credit_grant` g
+               JOIN `{$p}bonus_credit` b ON b.bonus_credit_id = g.bonus_credit_id AND b.revoked_at IS NULL
+              WHERE b.granted_at >= DATE_SUB(CURDATE(), INTERVAL 12 WEEK)
+              GROUP BY k"
+        );
+        $featSurveyCredit = array(
+            'key'         => 'survey_credit',
+            'title'       => 'Bonus Credit for Answering',
+            'description' => 'A kingdom or park can reward everyone who completes a survey and links it to their profile with bonus credit toward class levels. Credit is granted the moment the response is submitted.',
+            'kpis' => array(
+                $this->_rfuKpi('Surveys offering credit', $scSurveys, $svTotal, $share($scSurveys, $svTotal), 'surveys with credit switched on by at least one kingdom or park (and not since switched off)', null, null, 'of surveys created'),
+                $this->_rfuKpi('Kingdoms funding survey credit', $scKingdoms, $activeKingdoms, $kPct($scKingdoms), 'active kingdoms that have switched on credit for a survey — adopting an Amtgard-wide one counts', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Parks funding survey credit', $scParks, $activeParks, $share($scParks, $activeParks), 'active parks that have switched on credit for a survey', null, null, 'of active parks'),
+                $this->_rfuKpi('Survey credits granted', $scGranted, null, null, 'bonus credits awarded for answering a survey, not counting any later revoked'),
+                $this->_rfuKpi('Class credit awarded for surveys', $scValue, null, null, 'total credit value of the survey credits granted — a credit may be worth more or less than 1', null, null, null, null, 2),
+                $this->_rfuKpi('Players credited for a survey', $scPlayers, null, null, 'distinct players holding at least one survey credit'),
+                $this->_rfuKpi('Linked respondents who earned credit', $scGranted, $scEligibleResponses, $scEarnedPct, 'survey credits granted ÷ fully linked responses to surveys that offer credit — the gap is respondents who answered before credit was switched on or who did not qualify under the funder\'s scope', null, null, 'of linked responses'),
+                $this->_rfuKpi('Survey credits revoked', $scRevoked, null, null, 'survey credits an officer later took back'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-survey-credit-funder', 'pie', 'Survey credits by funder', $scGrantorBreak),
+                $this->_rfuChartFromBreakdown('rfu-survey-credit-week', 'column', 'Survey credits granted per week (last 12 weeks)', $fillSeries($scWeekCounts, 12, 'week'), 'Credits'),
+            ),
+        );
+
+        // --- Bonus credits awarded (org-wide) ----------------------------------
+        // The bonus-credit engine behind survey credit is also open to officers
+        // for credits of their own, so this feature counts EVERY bonus credit and
+        // splits it by origin. 'survey' categories are the ones a survey made.
+        $bcAwarded = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}bonus_credit` WHERE revoked_at IS NULL");
+        $bcRevoked = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}bonus_credit` WHERE revoked_at IS NOT NULL");
+        $bcValue = 0.0;
+        $this->db->Clear();
+        $r = $this->db->query("SELECT COALESCE(SUM(credits), 0) AS v FROM `{$p}bonus_credit` WHERE revoked_at IS NULL");
+        if ($r !== false && $r->next()) {
+            $bcValue = (float)$r->v;
+        }
+        $bcPlayers = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}bonus_credit` WHERE revoked_at IS NULL");
+        $bcViaSurvey = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}bonus_credit` b
+               JOIN `{$p}bonus_credit_category` c ON c.category_id = b.category_id
+              WHERE b.revoked_at IS NULL AND c.source_type = 'survey'"
+        );
+        $bcManual = $bcAwarded - $bcViaSurvey;
+        $bcCategories = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}bonus_credit_category` WHERE archived_at IS NULL AND source_type <> 'survey'"
+        );
+        $bcKingdoms = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT c.scope_id) AS c
+               FROM `{$p}bonus_credit_category` c
+               JOIN `{$p}kingdom` k ON k.kingdom_id = c.scope_id AND k.active = 'Active'
+              WHERE c.scope_type = 'kingdom' AND c.archived_at IS NULL AND c.source_type <> 'survey'"
+        );
+        $bcOrkCategories = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}bonus_credit_category`
+              WHERE scope_type = 'ork' AND archived_at IS NULL AND source_type <> 'survey'"
+        );
+        $bcGranters = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}bonus_credit_granter`");
+        $bcAdopting = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT a.kingdom_id) AS c
+               FROM `{$p}bonus_credit_adoption` a
+               JOIN `{$p}kingdom` k ON k.kingdom_id = a.kingdom_id AND k.active = 'Active'
+              WHERE a.withdrawn_at IS NULL"
+        );
+        $bcAcceptOutside = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c
+               FROM `{$p}bonus_credit_kingdom_setting` s
+               JOIN `{$p}kingdom` k ON k.kingdom_id = s.kingdom_id AND k.active = 'Active'
+              WHERE s.accepts_outside = 1"
+        );
+        $bcOriginBreak = array(
+            array('k' => 'Through a survey', 'c' => $bcViaSurvey),
+            array('k' => 'Granted by an officer', 'c' => $bcManual),
+        );
+        $bcMonthBreak = $this->_rfuBreakdown(
+            "SELECT DATE_FORMAT(MIN(granted_at), '%b %Y') AS k, COUNT(*) AS c
+               FROM `{$p}bonus_credit`
+              WHERE revoked_at IS NULL AND granted_at >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+              GROUP BY DATE_FORMAT(granted_at, '%Y-%m') ORDER BY MIN(granted_at) ASC"
+        );
+        $bcClassBreak = $this->_rfuBreakdown(
+            "SELECT cl.name AS k, COUNT(*) AS c
+               FROM `{$p}bonus_credit` b
+               JOIN `{$p}class` cl ON cl.class_id = b.class_id
+              WHERE b.revoked_at IS NULL
+              GROUP BY cl.class_id, cl.name ORDER BY c DESC, cl.name ASC LIMIT 10"
+        );
+        $featBonusCredits = array(
+            'key'         => 'bonus_credits',
+            'title'       => 'Bonus Credits Awarded',
+            'description' => 'Bonus credit counts toward a player\'s class levels and lives in its own category on their profile. Survey credit is one source; kingdoms can also create credits and appoint officers to grant them. Figures cover every bonus credit, whatever its origin.',
+            'kpis' => array(
+                $this->_rfuKpi('Bonus credits awarded', $bcAwarded, null, null, 'credits on player records, not counting any revoked'),
+                $this->_rfuKpi('Class credit awarded', $bcValue, null, null, 'total credit value of those awards — a single award may be worth more or less than 1', null, null, null, null, 2),
+                $this->_rfuKpi('Players with bonus credit', $bcPlayers, null, null, 'distinct players holding at least one bonus credit'),
+                $this->_rfuKpi('Awarded through a survey', $bcViaSurvey, $bcAwarded, $share($bcViaSurvey, $bcAwarded), 'credits whose category was created by a survey', null, null, 'of credits awarded'),
+                $this->_rfuKpi('Granted by an officer', $bcManual, $bcAwarded, $share($bcManual, $bcAwarded), 'credits awarded by hand from a kingdom\'s own or an Amtgard-wide category', null, null, 'of credits awarded'),
+                $this->_rfuKpi('Credits revoked', $bcRevoked, null, null, 'credits an officer took back — kept on record, no longer counted'),
+                $this->_rfuKpi('Credit categories created', $bcCategories, null, null, 'live, non-archived categories an officer can grant from (categories a survey creates for itself are not counted here)'),
+                $this->_rfuKpi('Kingdoms with a credit category', $bcKingdoms, $activeKingdoms, $kPct($bcKingdoms), 'active kingdoms that have defined at least one category of their own', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Amtgard-wide categories', $bcOrkCategories, null, null, 'categories defined by ORK admins for any kingdom to adopt'),
+                $this->_rfuKpi('Kingdoms adopting an Amtgard-wide credit', $bcAdopting, $activeKingdoms, $kPct($bcAdopting), 'active kingdoms with at least one adoption in force (not withdrawn)', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Kingdoms accepting outside credit', $bcAcceptOutside, $activeKingdoms, $kPct($bcAcceptOutside), 'kingdoms that let other kingdoms\' credits reach their players', null, null, 'of active kingdoms'),
+                $this->_rfuKpi('Officers appointed to grant credit', $bcGranters, null, null, 'distinct players added as a credit granter by a kingdom'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-bonus-origin', 'pie', 'Bonus credits by origin', $bcOriginBreak),
+                $this->_rfuChartFromBreakdown('rfu-bonus-month', 'column', 'Bonus credits granted per month (last 12 months)', $bcMonthBreak, 'Credits'),
+                $this->_rfuChartFromBreakdown('rfu-bonus-class', 'bar', 'Bonus credits by class (top 10)', $bcClassBreak, 'Credits'),
+            ),
+        );
+
+        // --- Finding surveys ----------------------------------------------------
+        $dsBanner = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey` WHERE status = 'open' AND show_banner = 1");
+        $dsBannerShare = $share($dsBanner, $svOpenNow);
+        $dsDismissals = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey_dismissal`");
+        $dsDismissers = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}survey_dismissal`");
+        $dsResume = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}survey` WHERE allow_resume = 1");
+        $featSurveyDiscovery = array(
+            'key'         => 'survey_discovery',
+            'title'       => 'Finding Surveys',
+            'description' => 'Open surveys promote themselves with a site banner, an Available Surveys card on My Amtgard, kingdom and park pages, and a share link. Link opens are not tracked, so reach is read from the banner and what players do with it.',
+            'kpis' => array(
+                $this->_rfuKpi('Open surveys with the banner on', $dsBanner, $svOpenNow, $dsBannerShare, 'surveys that promote themselves in the site-wide banner (on by default, switched off under Promotion in the builder)', null, null, 'of open surveys'),
+                $this->_rfuKpi('Banner dismissals', $dsDismissals, null, null, 'times a player dismissed a survey from the banner — a dismissal never closes the survey for them'),
+                $this->_rfuKpi('Players who dismissed a survey', $dsDismissers, null, null, 'distinct players who have dismissed at least one survey banner'),
+                $this->_rfuKpi('Surveys that let players resume', $dsResume, $svTotal, $share($dsResume, $svTotal), 'surveys saving a player\'s progress so they can finish later', null, null, 'of surveys created'),
+            ),
+            'charts' => array(),
+        );
+
+        $release357 = array(
+            'version' => '3.5.7',
+            'name'    => 'Garber',
+            'date'    => '2026-11-22',
+            'blurb'   => 'Surveys come to the ORK: Amtgard, a kingdom or a park builds a phone-friendly survey and eligible players answer it from My Amtgard, choosing how much of their identity travels with their answers — with bonus credit toward class levels as a thank-you.',
+            'features' => array(
+                $featSurveysCreated,
+                $featSurveyResponses,
+                $featSurveyCredit,
+                $featBonusCredits,
+                $featSurveyDiscovery,
+            ),
+        );
+
+        $release356 = array(
+            'version' => '3.5.6',
+            'name'    => 'Crown',
+            'date'    => '2026-10-09',
+            'blurb'   => 'Court Planner and the Recommendations Manager: plan a court, run it or record it from the printed packet, credit the artisans, and work the recommendation queue — pass down, snooze, queue for court or grant — from one page.',
+            'features' => array(
+                $featCourtPlanner,
+                $featCourtRun,
+                $featCourtArtisans,
+                $featRecsWorkflow,
+                $featRecNotifications,
+            ),
+        );
+
+        $release355 = array(
+            'version' => '3.5.5',
+            'name'    => 'Hydra',
+            'date'    => '2026-08-22',
+            'blurb'   => 'Engine hardening and multi-device sessions: up to three concurrent sign-ins per player, session visibility with Log Out Everywhere, unified tables, and a broad regression-audit pass.',
+            'features' => array(
+                $featSessions,
+            ),
+        );
+
+        $release354 = array(
+            'version' => '3.5.4',
+            'name'    => 'Walker',
+            'date'    => '2026-07-15',
+            'blurb'   => "Qualification Tests: kingdoms build a Reeve's and Corpora question bank, publish a versioned test, and players sit it for a dated qualification.",
+            'features' => array(
+                $featQualAdoption,
+                $featQualBank,
+                $featQualSharing,
+                $featQualTaking,
+            ),
+        );
+
+        // ====================================================================
+        // RELEASE 3.5.3 — Rose  (Event Planning Expansion)
+        // ====================================================================
+        // Every Rose table/column below is new this release, so these are pure
+        // post-launch adoption counts. A before/after activity-impact pass (like
+        // Dragon's) is intentionally deferred: Rose ships 2026-07-01, so an
+        // "after" window of ~0 days would be noise, not signal. Add it once the
+        // release has accrued a meaningful post-launch window.
+
+        // --- Event schedule & activity leads --------------------------------
+        $schedItems      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule`");
+        $schedEvents     = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_schedule`");
+        $schedAvg        = ($schedEvents > 0) ? round($schedItems / $schedEvents, 1) : 0;
+        $schedSecondary  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE secondary_category IS NOT NULL AND secondary_category <> ''");
+        $leadItems       = $this->_rfuScalar("SELECT COUNT(DISTINCT event_schedule_id) AS c FROM `{$p}event_schedule_lead`");
+        $leadPeople      = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}event_schedule_lead`");
+        $schedCatBreak   = $this->_rfuBreakdown(
+            "SELECT category AS k, COUNT(*) AS c FROM `{$p}event_schedule`
+			 WHERE category IS NOT NULL AND category <> ''
+			 GROUP BY category ORDER BY c DESC, category ASC"
+        );
+        $featSchedule = array(
+            'key'         => 'event_schedule',
+            'title'       => 'Event Schedule & Activity Leads',
+            'description' => 'Organizers build a per-occurrence agenda — activities with categories, locations, and the members leading each one.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with a schedule', $schedEvents, null, null, 'distinct event occurrences with >=1 schedule item'),
+                $this->_rfuKpi('Schedule items', $schedItems, null, null, 'rows in event schedule'),
+                $this->_rfuKpi('Avg items per planned event', $schedAvg, null, null, 'schedule items / event that has a schedule', decimals: 1),
+                $this->_rfuKpi('Items with a secondary tag', $schedSecondary, null, null, 'schedule items using a secondary category'),
+                $this->_rfuKpi('Items with an activity lead', $leadItems, null, null, 'distinct schedule items naming a lead'),
+                $this->_rfuKpi('Distinct activity leads', $leadPeople, null, null, 'distinct members leading an activity'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-sched-cat', 'bar', 'Schedule items by category', $schedCatBreak, 'Items'),
+            ),
+            'links' => array(
+                $this->_rfuEventLinkTile('Example Events with a Schedule', 'event_schedule'),
+            ),
+        );
+
+        // --- event staff & delegated capabilities ---------------------------
+        $staffTotal  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff`");
+        $staffEvents = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_staff`");
+        $staffPeople = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}event_staff`");
+        $capManage   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_manage = 1");
+        $capAttend   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_attendance = 1");
+        $capSchedule = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_schedule = 1");
+        $capFeast    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_staff` WHERE can_feast = 1");
+        $capChart = array(
+            'id'         => 'rfu-staff-caps',
+            'type'       => 'bar',
+            'title'      => 'Delegated capabilities in use',
+            'categories' => array('Manage', 'Attendance', 'Schedule', 'Feast'),
+            'series'     => array(array('name' => 'Staff with capability', 'data' => array($capManage, $capAttend, $capSchedule, $capFeast))),
+        );
+        $featStaff = array(
+            'key'         => 'event_staff',
+            'title'       => 'Event Staff & Delegated Capabilities',
+            'description' => 'Officers appoint event staff and grant granular powers — manage, attendance, schedule, feast — without handing over full park-officer rights.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with staff', $staffEvents, null, null, 'distinct event occurrences with >=1 staffer'),
+                $this->_rfuKpi('Staff assignments', $staffTotal, null, null, 'rows in event staff'),
+                $this->_rfuKpi('Distinct staffers', $staffPeople, null, null, 'distinct members given an event-staff role'),
+                $this->_rfuKpi('Can manage', $capManage, null, null, 'staffers granted full event management'),
+                $this->_rfuKpi('Can take attendance', $capAttend, null, null, 'staffers granted attendance / sign-in'),
+                $this->_rfuKpi('Can edit schedule', $capSchedule, null, null, 'staffers granted schedule editing'),
+                $this->_rfuKpi('Can edit feast', $capFeast, null, null, 'staffers granted feast editing'),
+            ),
+            'charts' => array($capChart),
+            'links' => array(
+                $this->_rfuEventLinkTile('Example Events with Staff', 'event_staff'),
+            ),
+        );
+
+        // --- admission, fees & ticket links ---------------------------------
+        // Ticket links are stored as ork_event_links rows with the ticket icon.
+        $feeTiers     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_fees`");
+        $feeEvents    = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_fees`");
+        $feePaid      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_fees` WHERE cost > 0");
+        $feeFree      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_fees` WHERE cost = 0");
+        $ticketEvents = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_links` WHERE icon = 'fas fa-ticket-alt'");
+        // admission_type is free text ('Bronze', 'Mammoth', 'general admission', ...),
+        // so grouping by it says nothing useful. Bucket the numeric cost instead and
+        // keep the buckets in natural price order (ORDER BY MIN(cost)), not by count.
+        // Buckets with no rows simply don't come back from GROUP BY — that's fine.
+        $feeCostBreak = $this->_rfuBreakdown(
+            "SELECT CASE
+						WHEN cost <= 0  THEN 'Free'
+						WHEN cost <= 10 THEN '1-10'
+						WHEN cost <= 20 THEN '11-20'
+						WHEN cost <= 30 THEN '21-30'
+						WHEN cost <= 40 THEN '31-40'
+						WHEN cost <= 50 THEN '41-50'
+						WHEN cost <= 60 THEN '51-60'
+						ELSE '60+'
+					END AS k, COUNT(*) AS c
+			   FROM `{$p}event_fees`
+			  GROUP BY k ORDER BY MIN(cost)"
+        );
+        $featFees = array(
+            'key'         => 'event_fees',
+            'title'       => 'Admission, Fees & Ticket Links',
+            'description' => 'Events publish priced admission tiers and a ticket-sales link so attendees know costs up front.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with fee tiers', $feeEvents, null, null, 'distinct events listing admission tiers'),
+                $this->_rfuKpi('Total fee tiers', $feeTiers, null, null, 'rows in event fees'),
+                $this->_rfuKpi('Paid tiers', $feePaid, null, null, 'fee tiers with a cost above 0'),
+                $this->_rfuKpi('Free tiers', $feeFree, null, null, 'fee tiers listed at no cost'),
+                $this->_rfuKpi('Events with a ticket link', $ticketEvents, null, null, 'events linking out to ticket sales'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-fee-cost', 'bar', 'Admission tiers by cost', $feeCostBreak, 'Tiers'),
+            ),
+            'links' => array(
+                $this->_rfuEventLinkTile('Example Events with Admission & Fees', 'event_fees'),
+            ),
+        );
+
+        // --- feast planning & dietary needs ---------------------------------
+        // Post-unify, feast rows live in ork_event_schedule (category 'Feast and Food').
+        $feastItems    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food'");
+        $feastEvents   = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food'");
+        $feastMenu     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food' AND menu IS NOT NULL AND menu <> ''");
+        $feastDietInfo = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_schedule` WHERE category = 'Feast and Food' AND ((dietary IS NOT NULL AND dietary <> '') OR (allergens IS NOT NULL AND allergens <> ''))");
+        $dietPlayers   = $this->_rfuScalar("SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}mundane_dietary`");
+        // Aggregate (anonymized) dietary-need counts across the most common flags.
+        $this->db->Clear();
+        $dietBreak = array();
+        $dietRow = $this->db->query(
+            "SELECT
+				SUM(diet_vegetarian)                  AS vegetarian,
+				SUM(diet_vegan)                        AS vegan,
+				SUM(diet_halal + diet_kosher)          AS faith_based,
+				SUM(restrict_dairy + allergen_milk)    AS dairy,
+				SUM(allergen_wheat)                    AS gluten_wheat,
+				SUM(allergen_peanuts + allergen_treenuts) AS nuts,
+				SUM(restrict_shellfish + allergen_shellfish) AS shellfish
+			 FROM `{$p}mundane_dietary`"
+        );
+        if ($dietRow !== false && $dietRow->next()) {
+            $dietBreak = array(
+                array('k' => 'Vegetarian',       'c' => (int)$dietRow->vegetarian),
+                array('k' => 'Vegan',            'c' => (int)$dietRow->vegan),
+                array('k' => 'Halal / Kosher',   'c' => (int)$dietRow->faith_based),
+                array('k' => 'Dairy-free',       'c' => (int)$dietRow->dairy),
+                array('k' => 'Gluten / wheat',   'c' => (int)$dietRow->gluten_wheat),
+                array('k' => 'Tree nut / peanut', 'c' => (int)$dietRow->nuts),
+                array('k' => 'Shellfish',        'c' => (int)$dietRow->shellfish),
+            );
+            // This breakdown is hand-built rather than GROUP BY'd, so it needs the
+            // same ordering the other bar charts get from SQL `ORDER BY c DESC` —
+            // biggest first — to render consistently with them.
+            usort($dietBreak, function ($a, $b) {
+                return $b['c'] - $a['c'];
+            });
+        }
+        $featFeast = array(
+            'key'         => 'feast',
+            'title'       => 'Feast Planning & Dietary Needs',
+            'description' => 'Feast is part of the event schedule — menus, costs, dietary notes and allergens together — and players can record dietary preferences for planners.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with a feast', $feastEvents, null, null, "events with a 'Feast and Food' schedule item"),
+                $this->_rfuKpi('Feast items', $feastItems, null, null, 'feast / food schedule rows'),
+                $this->_rfuKpi('Feast items with a menu', $feastMenu, null, null, 'feast items that list a menu'),
+                $this->_rfuKpi('Feast items noting diet / allergens', $feastDietInfo, null, null, 'feast items recording dietary or allergen info'),
+                $this->_rfuKpi('Players with dietary preferences', $dietPlayers, $denom, $pct($dietPlayers), 'players who saved dietary preferences'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-diet', 'bar', 'Dietary needs across players (aggregate)', $dietBreak, 'Players'),
+            ),
+            'links' => array(
+                $this->_rfuEventLinkTile(
+                    'Example Events with a Feast',
+                    'event_schedule',
+                    "src.category = 'Feast and Food'"
+                ),
+            ),
+        );
+
+        // --- day-of sign-in & self-registration -----------------------------
+        $signinLinks    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance_link`");
+        $signinCreators = $this->_rfuScalar("SELECT COUNT(DISTINCT by_whom_id) AS c FROM `{$p}attendance_link`");
+        $signinEventTied = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance_link` WHERE event_id > 0");
+        $selfregLinks   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}selfreg_link`");
+        $selfregUsed    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}selfreg_link` WHERE used_by IS NOT NULL");
+        $selfregConv    = ($selfregLinks > 0) ? round(100.0 * $selfregUsed / $selfregLinks, 1) : null;
+        // Attendance entry-method metrics are scoped to the last 30 days. The
+        // entry_method column is unindexed on a 3.5M-row table, so an all-time
+        // count is a full table scan (x3 here); the `date` index turns each into
+        // a ~1.4k-row range scan. It is also more meaningful: sign-in links and
+        // self-reg launched with 3.5.3, so an all-time entry-method mix is ~100%
+        // legacy 'manual' — a recent window shows how players are checking in now.
+        $attnSignin     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance` WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND entry_method = 'signin_link'");
+        $attnSelfreg    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance` WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND entry_method = 'self_reg'");
+        $attnOnline     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}attendance` a WHERE a.`date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)" . Attendance::TypeClause('online', 'a'));
+        $entryBreak     = $this->_rfuBreakdown(
+            "SELECT entry_method AS k, COUNT(*) AS c FROM `{$p}attendance`
+			 WHERE `date` >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND entry_method IS NOT NULL AND entry_method <> ''
+			 GROUP BY entry_method ORDER BY c DESC, entry_method ASC"
+        );
+        $featSignin = array(
+            'key'         => 'signin_selfreg',
+            'title'       => 'Day-of Sign-In & Self-Registration',
+            'description' => 'QR sign-in links let players check themselves in, and self-registration links let brand-new players create an account on the spot.',
+            'kpis' => array(
+                $this->_rfuKpi('Sign-in links created', $signinLinks, null, null, 'rows in attendance link'),
+                $this->_rfuKpi('Officers issuing links', $signinCreators, null, null, 'distinct members who created a sign-in link'),
+                $this->_rfuKpi('Links tied to an event', $signinEventTied, null, null, 'sign-in links scoped to a specific event'),
+                $this->_rfuKpi('Check-ins via sign-in link (30d)', $attnSignin, null, null, "attendance in the last 30 days with entry_method 'signin_link'"),
+                $this->_rfuKpi('Self-reg links created', $selfregLinks, null, null, 'rows in self-registration link'),
+                $this->_rfuKpi('Self-reg links redeemed', $selfregUsed, $selfregLinks, $selfregConv, 'self-reg links that created a new player', null, null, 'of self-reg links were used'),
+                $this->_rfuKpi('Self-reg check-ins recorded (30d)', $attnSelfreg, null, null, "attendance in the last 30 days with entry_method 'self_reg'"),
+                $this->_rfuKpi('Online check-ins recorded (30d)', $attnOnline, null, null, 'attendance in the last 30 days marked Online'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-entry-method', 'pie', 'Attendance by entry method (last 30 days)', $entryBreak, 'Sign-ins'),
+            ),
+        );
+
+        // --- custom hero banners (all profile types) ------------------------
+        $bannerPlayers  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE has_banner = 1");
+        $bannerParks    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}park` WHERE has_banner = 1");
+        $bannerKingdoms = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}kingdom` WHERE has_banner = 1");
+        $bannerUnits    = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}unit` WHERE has_banner = 1");
+        $bannerEvents   = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event` WHERE has_banner = 1");
+        // ork_mundane records no "banner added" date, so there is no recency to sort
+        // by — sample randomly from the players who turned one on.
+        $this->db->Clear();
+        $bannerRows = array();
+        $bannerR = $this->db->query(
+            "SELECT mundane_id, persona FROM `{$p}mundane`
+			  WHERE has_banner = 1 AND persona IS NOT NULL AND persona <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($bannerR !== false) {
+            while ($bannerR->next()) {
+                $bannerRows[] = array(
+                    'label' => $bannerR->persona,
+                    'route' => 'Player/profile/' . (int)$bannerR->mundane_id,
+                );
+            }
+        }
+        // Same random sampling for the other profile types that can carry a banner,
+        // so the report shows a live example of each — not just players.
+        $this->db->Clear();
+        $bannerParkRows = array();
+        $bpR = $this->db->query(
+            "SELECT park_id, name FROM `{$p}park`
+			  WHERE has_banner = 1 AND name IS NOT NULL AND name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($bpR !== false) {
+            while ($bpR->next()) {
+                $bannerParkRows[] = array('label' => $bpR->name, 'route' => 'Park/index/' . (int)$bpR->park_id);
+            }
+        }
+        $this->db->Clear();
+        $bannerKingdomRows = array();
+        $bkR = $this->db->query(
+            "SELECT kingdom_id, name FROM `{$p}kingdom`
+			  WHERE has_banner = 1 AND name IS NOT NULL AND name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($bkR !== false) {
+            while ($bkR->next()) {
+                $bannerKingdomRows[] = array('label' => $bkR->name, 'route' => 'Kingdom/index/' . (int)$bkR->kingdom_id);
+            }
+        }
+        $this->db->Clear();
+        $bannerUnitRows = array();
+        $buR = $this->db->query(
+            "SELECT unit_id, name FROM `{$p}unit`
+			  WHERE has_banner = 1 AND name IS NOT NULL AND name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($buR !== false) {
+            while ($buR->next()) {
+                $bannerUnitRows[] = array('label' => $buR->name, 'route' => 'Unit/index/' . (int)$buR->unit_id);
+            }
+        }
+        // Events link through a calendar occurrence — Event/detail needs both the event
+        // id and one of its calendardetail ids — so the INNER JOIN drops any banner
+        // event that has no occurrence to point at.
+        $this->db->Clear();
+        $bannerEventRows = array();
+        $beR = $this->db->query(
+            "SELECT e.event_id, e.name, MIN(cd.event_calendardetail_id) AS cdid
+			   FROM `{$p}event` e
+			   JOIN `{$p}event_calendardetail` cd ON cd.event_id = e.event_id
+			  WHERE e.has_banner = 1 AND e.name IS NOT NULL AND e.name <> ''
+			  GROUP BY e.event_id, e.name
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($beR !== false) {
+            while ($beR->next()) {
+                $bannerEventRows[] = array('label' => $beR->name, 'route' => 'Event/detail/' . (int)$beR->event_id . '/' . (int)$beR->cdid);
+            }
+        }
+        $bannerChart = array(
+            'id'         => 'rfu-banners',
+            'type'       => 'bar',
+            'title'      => 'Custom banners by profile type',
+            'categories' => array('Players', 'Parks', 'Kingdoms', 'Units', 'Events'),
+            'series'     => array(array('name' => 'With a custom banner', 'data' => array($bannerPlayers, $bannerParks, $bannerKingdoms, $bannerUnits, $bannerEvents))),
+        );
+        $featBanners = array(
+            'key'         => 'hero_banners',
+            'title'       => 'Custom Hero Banners',
+            'description' => 'Players, parks, kingdoms, units and events can upload a framed hero banner image for their profile masthead.',
+            'kpis' => array(
+                $this->_rfuKpi('Players with a banner', $bannerPlayers, $denom, $pct($bannerPlayers), 'players with has_banner on'),
+                $this->_rfuKpi('Parks with a banner', $bannerParks, null, null, 'parks with has_banner on'),
+                $this->_rfuKpi('Kingdoms with a banner', $bannerKingdoms, null, null, 'kingdoms with has_banner on'),
+                $this->_rfuKpi('Units with a banner', $bannerUnits, null, null, 'units with has_banner on'),
+                $this->_rfuKpi('Events with a banner', $bannerEvents, null, null, 'events with has_banner on'),
+            ),
+            'charts' => array($bannerChart),
+            'links' => array(
+                $this->_rfuLinkTile('Example Players with a Hero Banner', $bannerRows),
+                $this->_rfuLinkTile('Example Parks with a Hero Banner', $bannerParkRows),
+                $this->_rfuLinkTile('Example Kingdoms with a Hero Banner', $bannerKingdomRows),
+                $this->_rfuLinkTile('Example Units with a Hero Banner', $bannerUnitRows),
+                $this->_rfuLinkTile('Example Events with a Hero Banner', $bannerEventRows),
+            ),
+        );
+
+        // --- calendar items & smarter calendar ------------------------------
+        $calItems       = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item`");
+        $calCreators    = $this->_rfuScalar("SELECT COUNT(DISTINCT created_by) AS c FROM `{$p}calendar_item` WHERE created_by > 0");
+        $calKingdomWide = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE park_id = 0 AND kingdom_id > 0");
+        $calOfficerOnly = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE is_officer_only = 1");
+        $calLocalsOnly  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE is_locals_only = 1");
+        $calAllDay      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}calendar_item` WHERE all_day = 1");
+        // Calendar items have no deep-link route of their own (they render as a JS
+        // overlay), so each links to its owning park — or its kingdom when the item
+        // is kingdom-wide (park_id = 0) — and names that owner in the subtitle.
+        $this->db->Clear();
+        $calRows = array();
+        $calR = $this->db->query(
+            "SELECT ci.calendar_item_id, ci.name, ci.park_id, ci.kingdom_id,
+					pk.name AS park_name, kd.name AS kingdom_name
+			   FROM `{$p}calendar_item` ci
+			   LEFT JOIN `{$p}park` pk ON pk.park_id = ci.park_id
+			   LEFT JOIN `{$p}kingdom` kd ON kd.kingdom_id = ci.kingdom_id
+			  WHERE ci.name IS NOT NULL AND ci.name <> ''
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($calR !== false) {
+            while ($calR->next()) {
+                $isPark = ((int)$calR->park_id > 0);
+                $calRows[] = array(
+                    'label' => $calR->name,
+                    'route' => $isPark
+                        ? 'Park/index/' . (int)$calR->park_id
+                        : 'Kingdom/index/' . (int)$calR->kingdom_id,
+                    'sub'   => $isPark ? $calR->park_name : $calR->kingdom_name,
+                );
+            }
+        }
+        // Flags can co-occur, so show them as independent bars (not a partition).
+        $calFlagsChart = array(
+            'id'         => 'rfu-cal-flags',
+            'type'       => 'bar',
+            'title'      => 'Calendar item options in use',
+            'categories' => array('Kingdom-wide', 'Officer-only', 'Locals-only', 'All-day'),
+            'series'     => array(array('name' => 'Items', 'data' => array($calKingdomWide, $calOfficerOnly, $calLocalsOnly, $calAllDay))),
+        );
+        $featCalendar = array(
+            'key'         => 'calendar_items',
+            'title'       => 'Calendar Items & Smarter Calendar',
+            'description' => 'Kingdoms and parks add standalone calendar items — kingdom-wide entries plus officer-only or locals-only visibility.',
+            'kpis' => array(
+                $this->_rfuKpi('Calendar items', $calItems, null, null, 'rows in calendar item'),
+                $this->_rfuKpi('Distinct creators', $calCreators, null, null, 'members who created a calendar item'),
+                $this->_rfuKpi('Kingdom-wide items', $calKingdomWide, null, null, 'items scoped to a whole kingdom'),
+                $this->_rfuKpi('Officer-only items', $calOfficerOnly, null, null, 'items visible to officers only'),
+                $this->_rfuKpi('Locals-only items', $calLocalsOnly, null, null, 'items visible to local members only'),
+            ),
+            'charts' => array($calFlagsChart),
+            'links' => array(
+                $this->_rfuLinkTile('Example Calendar Items', $calRows),
+            ),
+        );
+
+        // --- event types ----------------------------------------------------
+        $typedOcc  = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_calendardetail` WHERE event_type IS NOT NULL AND event_type <> ''");
+        $typeBreak = $this->_rfuBreakdown(
+            "SELECT event_type AS k, COUNT(*) AS c FROM `{$p}event_calendardetail`
+			 WHERE event_type IS NOT NULL AND event_type <> ''
+			 GROUP BY event_type ORDER BY c DESC, event_type ASC LIMIT 15"
+        );
+        $featEventType = array(
+            'key'         => 'event_type',
+            'title'       => 'Event Types',
+            'description' => 'Occurrences can be typed (Coronation, Midreign, Warmaster, etc.), driving the icons and labels that distinguish them on the Kingdom events tab.',
+            'kpis' => array(
+                $this->_rfuKpi('Typed occurrences', $typedOcc, null, null, 'event occurrences with an event type set'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-event-type', 'bar', 'Occurrences by event type', $typeBreak, 'Occurrences'),
+            ),
+        );
+
+        // --- event external links -------------------------------------------
+        $linkRows      = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}event_links`");
+        $linkEvents    = $this->_rfuScalar("SELECT COUNT(DISTINCT event_calendardetail_id) AS c FROM `{$p}event_links`");
+        $linkIconBreak = $this->_rfuBreakdown(
+            "SELECT icon AS k, COUNT(*) AS c FROM `{$p}event_links`
+			 WHERE icon IS NOT NULL AND icon <> ''
+			 GROUP BY icon ORDER BY c DESC, icon ASC"
+        );
+        // Map raw FontAwesome classes to friendly link-type labels for the chart.
+        $linkIconLabels = array(
+            'fab fa-facebook'  => 'Facebook',
+            'fab fa-discord'   => 'Discord',
+            'fas fa-globe'     => 'Website',
+            'far fa-clipboard' => 'Form / doc',
+            'fas fa-link'      => 'Generic link',
+            'fas fa-ticket-alt' => 'Ticket sales',
+        );
+        foreach ($linkIconBreak as &$linkRow) {
+            if (isset($linkIconLabels[$linkRow['k']])) {
+                $linkRow['k'] = $linkIconLabels[$linkRow['k']];
+            }
+        }
+        unset($linkRow);
+        $featLinks = array(
+            'key'         => 'event_links',
+            'title'       => 'Event External Links',
+            'description' => 'Events attach external links — registration, rules, Discord, ticket sales and more.',
+            'kpis' => array(
+                $this->_rfuKpi('Events with links', $linkEvents, null, null, 'distinct events with >=1 external link'),
+                $this->_rfuKpi('Total links', $linkRows, null, null, 'rows in event links'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-link-types', 'pie', 'External links by type', $linkIconBreak, 'Links'),
+            ),
+        );
+
+        // --- flexible park-day recurrence -----------------------------------
+        $pdEveryX     = $this->_rfuScalar("SELECT COUNT(*) AS c FROM `{$p}parkday` WHERE recurrence = 'every-x-weeks'");
+        $pdRecurBreak = $this->_rfuBreakdown(
+            "SELECT recurrence AS k, COUNT(*) AS c FROM `{$p}parkday`
+			 WHERE recurrence IS NOT NULL AND recurrence <> ''
+			 GROUP BY recurrence ORDER BY c DESC, recurrence ASC"
+        );
+        $featParkday = array(
+            'key'         => 'parkday_recurrence',
+            'title'       => 'Flexible Park-Day Recurrence',
+            'description' => "Park days can recur on an 'every X weeks' cadence in addition to weekly, monthly and week-of-month.",
+            'kpis' => array(
+                $this->_rfuKpi("Park days on 'every X weeks'", $pdEveryX, null, null, 'parkday rows using the every-x-weeks cadence'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-parkday-recur', 'pie', 'Park-day recurrence modes', $pdRecurBreak, 'Park days'),
+            ),
+        );
+
+        $release353 = array(
+            'version' => '3.5.3',
+            'name'    => 'Rose',
+            'date'    => '2026-07-01',
+            'blurb'   => 'Event Planning Expansion: schedule, staff, fees and feast on the event page, day-of QR sign-in and self-registration, custom hero banners, and a smarter calendar.',
+            'features' => array(
+                $featSchedule,
+                $featStaff,
+                $featFees,
+                $featFeast,
+                $featSignin,
+                $featBanners,
+                $featCalendar,
+                $featEventType,
+                $featLinks,
+                $featParkday,
+            ),
+        );
+
+        // ====================================================================
+        // RELEASE 3.5.2 — Mask
+        // ====================================================================
+
+        // --- nameplate KPIs (all from ork_mundane_design) --------------------
+        $dColorPrimary = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE color_primary IS NOT NULL AND color_primary <> ''"
+        );
+        $dPrefix = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE name_prefix IS NOT NULL AND name_prefix <> ''"
+        );
+        $dSuffix = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE name_suffix IS NOT NULL AND name_suffix <> ''"
+        );
+        $dGradient = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE hero_gradient IS NOT NULL AND hero_gradient <> ''"
+        );
+        $dFont = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE name_font IS NOT NULL AND name_font <> ''"
+        );
+        $dPronunciation = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design` WHERE pronunciation_guide IS NOT NULL AND pronunciation_guide <> ''"
+        );
+        $dAbout = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane_design`
 			 WHERE (about_persona IS NOT NULL AND about_persona <> '')
 			    OR (about_story IS NOT NULL AND about_story <> '')"
-		);
+        );
 
-		// nameplate breakdowns
-		$fontBreak = $this->_rfuBreakdown(
-			"SELECT name_font AS k, COUNT(*) AS c FROM `{$p}mundane_design`
+        // nameplate breakdowns
+        $fontBreak = $this->_rfuBreakdown(
+            "SELECT name_font AS k, COUNT(*) AS c FROM `{$p}mundane_design`
 			 WHERE name_font IS NOT NULL AND name_font <> ''
 			 GROUP BY name_font ORDER BY c DESC, name_font ASC"
-		);
-		$beltBreak = $this->_rfuBreakdown(
-			"SELECT belt_display AS k, COUNT(*) AS c FROM `{$p}mundane_design`
+        );
+        $beltBreak = $this->_rfuBreakdown(
+            "SELECT belt_display AS k, COUNT(*) AS c FROM `{$p}mundane_design`
 			 WHERE belt_display IS NOT NULL AND belt_display <> ''
 			 GROUP BY belt_display ORDER BY c DESC, belt_display ASC"
-		);
-		$gradientBreak = $this->_rfuBreakdown(
-			"SELECT hero_gradient AS k, COUNT(*) AS c FROM `{$p}mundane_design`
+        );
+        $gradientBreak = $this->_rfuBreakdown(
+            "SELECT hero_gradient AS k, COUNT(*) AS c FROM `{$p}mundane_design`
 			 WHERE hero_gradient IS NOT NULL AND hero_gradient <> ''
 			 GROUP BY hero_gradient ORDER BY c DESC, hero_gradient ASC"
-		);
+        );
 
-		$featNameplate = array(
-			'key'         => 'nameplate',
-			'title'       => 'Nameplate & Profile Story',
-			'description' => 'Players personalize their profile masthead with custom colors, prefixes/suffixes, fonts, pronunciation guides and a written persona.',
-			'kpis' => array(
-				$this->_rfuKpi('Custom nameplate color', $dColorPrimary, $denom, $pct($dColorPrimary), 'players with color_primary set'),
-				$this->_rfuKpi('Name prefix', $dPrefix, $denom, $pct($dPrefix), 'players with name_prefix set'),
-				$this->_rfuKpi('Name suffix', $dSuffix, $denom, $pct($dSuffix), 'players with name_suffix set'),
-				$this->_rfuKpi('Pride gradient', $dGradient, $denom, $pct($dGradient), 'players with hero_gradient set'),
-				$this->_rfuKpi('Custom font', $dFont, $denom, $pct($dFont), 'players with name_font set'),
-				$this->_rfuKpi('Pronunciation guide', $dPronunciation, $denom, $pct($dPronunciation), 'players with pronunciation_guide set'),
-				$this->_rfuKpi('Custom About text', $dAbout, $denom, $pct($dAbout), 'players with about_persona or about_story set'),
-				$this->_rfuKpi('Any design row', $playersWithDesign, $denom, $pct($playersWithDesign), 'players with a profile design record'),
-			),
-			'charts' => array(
-				$this->_rfuChartFromBreakdown('rfu-font', 'bar', 'Nameplate font adoption', $fontBreak, 'Players'),
-				$this->_rfuChartFromBreakdown('rfu-belt', 'pie', 'Belt display choice', $beltBreak, 'Players'),
-				$this->_rfuChartFromBreakdown('rfu-gradient', 'bar', 'Pride gradient adoption', $gradientBreak, 'Players'),
-			),
-		);
+        $featNameplate = array(
+            'key'         => 'nameplate',
+            'title'       => 'Nameplate & Profile Story',
+            'description' => 'Players personalize their profile masthead with custom colors, prefixes/suffixes, fonts, pronunciation guides and a written persona.',
+            'kpis' => array(
+                $this->_rfuKpi('Custom nameplate color', $dColorPrimary, $denom, $pct($dColorPrimary), 'players with color_primary set'),
+                $this->_rfuKpi('Name prefix', $dPrefix, $denom, $pct($dPrefix), 'players with name_prefix set'),
+                $this->_rfuKpi('Name suffix', $dSuffix, $denom, $pct($dSuffix), 'players with name_suffix set'),
+                $this->_rfuKpi('Pride gradient', $dGradient, $denom, $pct($dGradient), 'players with hero_gradient set'),
+                $this->_rfuKpi('Custom font', $dFont, $denom, $pct($dFont), 'players with name_font set'),
+                $this->_rfuKpi('Pronunciation guide', $dPronunciation, $denom, $pct($dPronunciation), 'players with pronunciation_guide set'),
+                $this->_rfuKpi('Custom About text', $dAbout, $denom, $pct($dAbout), 'players with about_persona or about_story set'),
+                $this->_rfuKpi('Any design row', $playersWithDesign, $denom, $pct($playersWithDesign), 'players with a profile design record'),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-font', 'bar', 'Nameplate font adoption', $fontBreak, 'Players'),
+                $this->_rfuChartFromBreakdown('rfu-belt', 'pie', 'Belt display choice', $beltBreak, 'Players'),
+                $this->_rfuChartFromBreakdown('rfu-gradient', 'bar', 'Pride gradient adoption', $gradientBreak, 'Players'),
+            ),
+        );
 
-		// --- accessibility fonts (ork_mundane) -------------------------------
-		$basicFonts = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE basic_fonts = 1"
-		);
-		$dyslexiaFonts = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE dyslexia_fonts = 1"
-		);
-		$featViewerFonts = array(
-			'key'         => 'viewer_fonts',
-			'title'       => 'Accessibility Fonts',
-			'description' => 'Readers can swap profile typography for simpler or dyslexia-friendly typefaces.',
-			'kpis' => array(
-				$this->_rfuKpi('Basic fonts enabled', $basicFonts, $denom, $pct($basicFonts), 'players with basic_fonts on'),
-				$this->_rfuKpi('Dyslexia fonts enabled', $dyslexiaFonts, $denom, $pct($dyslexiaFonts), 'players with dyslexia_fonts on'),
-			),
-			'charts' => array(),
-		);
+        // --- accessibility fonts (ork_mundane) -------------------------------
+        $basicFonts = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE basic_fonts = 1"
+        );
+        $dyslexiaFonts = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE dyslexia_fonts = 1"
+        );
+        $featViewerFonts = array(
+            'key'         => 'viewer_fonts',
+            'title'       => 'Accessibility Fonts',
+            'description' => 'Readers can swap profile typography for simpler or dyslexia-friendly typefaces.',
+            'kpis' => array(
+                $this->_rfuKpi('Basic fonts enabled', $basicFonts, $denom, $pct($basicFonts), 'players with basic_fonts on'),
+                $this->_rfuKpi('Dyslexia fonts enabled', $dyslexiaFonts, $denom, $pct($dyslexiaFonts), 'players with dyslexia_fonts on'),
+            ),
+            'charts' => array(),
+        );
 
-		// --- personal milestones (ork_player_milestones) ---------------------
-		$milestoneTotal = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}player_milestones`"
-		);
-		$milestoneUsers = $this->_rfuScalar(
-			"SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}player_milestones`"
-		);
-		$milestoneAvg = ($milestoneUsers > 0) ? round($milestoneTotal / $milestoneUsers, 1) : 0;
-		$featMilestones = array(
-			'key'         => 'milestones',
-			'title'       => 'Personal Milestones',
-			'description' => 'Players pin dated, captioned milestones to their profile timeline.',
-			'kpis' => array(
-				$this->_rfuKpi('Total milestones', $milestoneTotal, null, null, 'rows in player milestones'),
-				$this->_rfuKpi('Players using milestones', $milestoneUsers, $denom, $pct($milestoneUsers), 'distinct players with a milestone'),
-				$this->_rfuKpi('Avg per adopting player', $milestoneAvg, null, null, 'milestones / adopting player'),
-			),
-			'charts' => array(),
-		);
+        // --- personal milestones (ork_player_milestones) ---------------------
+        $milestoneTotal = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}player_milestones`"
+        );
+        $milestoneUsers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}player_milestones`"
+        );
+        $milestoneAvg = ($milestoneUsers > 0) ? round($milestoneTotal / $milestoneUsers, 1) : 0;
+        $featMilestones = array(
+            'key'         => 'milestones',
+            'title'       => 'Personal Milestones',
+            'description' => 'Players pin dated, captioned milestones to their profile timeline.',
+            'kpis' => array(
+                $this->_rfuKpi('Total milestones', $milestoneTotal, null, null, 'rows in player milestones'),
+                $this->_rfuKpi('Players using milestones', $milestoneUsers, $denom, $pct($milestoneUsers), 'distinct players with a milestone'),
+                $this->_rfuKpi('Avg per adopting player', $milestoneAvg, null, null, 'milestones / adopting player'),
+            ),
+            'charts' => array(),
+        );
 
-		// --- recommendation seconds (ork_recommendation_seconds) -------------
-		$secTotal = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL"
-		);
-		$secRecs = $this->_rfuScalar(
-			"SELECT COUNT(DISTINCT recommendations_id) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL"
-		);
-		$secSupporters = $this->_rfuScalar(
-			"SELECT COUNT(DISTINCT supporter_mundane_id) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL"
-		);
-		$secNotes = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL AND notes IS NOT NULL AND notes <> ''"
-		);
-		$secPctOfRecs = ($activeRecommendations > 0)
-			? round(($secRecs / $activeRecommendations) * 100, 1)
-			: null;
-		$featRecSeconds = array(
-			'key'         => 'rec_seconds',
-			'title'       => 'Recommendation Seconds',
-			'description' => 'Members add weight to an award recommendation by seconding it, optionally with a note.',
-			'kpis' => array(
-				$this->_rfuKpi('Active seconds', $secTotal, null, null, 'non-deleted seconds'),
-				$this->_rfuKpi('Recommendations seconded', $secRecs, null, null, 'distinct recommendations with a second'),
-				$this->_rfuKpi('Unique seconders', $secSupporters, null, null, 'distinct supporting members'),
-				$this->_rfuKpi('Seconds with a note', $secNotes, null, null, 'seconds carrying a written note'),
-				$this->_rfuKpi('Recs with >=1 second', $secRecs, $activeRecommendations, $secPctOfRecs, 'share of active recommendations seconded'),
-			),
-			'charts' => array(),
-		);
+        // --- recommendation seconds (ork_recommendation_seconds) -------------
+        $secTotal = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL"
+        );
+        $secRecs = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT recommendations_id) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL"
+        );
+        $secSupporters = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT supporter_mundane_id) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL"
+        );
+        $secNotes = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}recommendation_seconds` WHERE deleted_at IS NULL AND notes IS NOT NULL AND notes <> ''"
+        );
+        $secPctOfRecs = ($activeRecommendations > 0)
+            ? round(($secRecs / $activeRecommendations) * 100, 1)
+            : null;
+        $featRecSeconds = array(
+            'key'         => 'rec_seconds',
+            'title'       => 'Recommendation Seconds',
+            'description' => 'Members add weight to an award recommendation by seconding it, optionally with a note.',
+            'kpis' => array(
+                $this->_rfuKpi('Active seconds', $secTotal, null, null, 'non-deleted seconds'),
+                $this->_rfuKpi('Recommendations seconded', $secRecs, null, null, 'distinct recommendations with a second'),
+                $this->_rfuKpi('Unique seconders', $secSupporters, null, null, 'distinct supporting members'),
+                $this->_rfuKpi('Seconds with a note', $secNotes, null, null, 'seconds carrying a written note'),
+                $this->_rfuKpi('Recs with >=1 second', $secRecs, $activeRecommendations, $secPctOfRecs, 'share of active recommendations seconded'),
+            ),
+            'charts' => array(),
+        );
 
-		// --- recommendation activity: before vs after Mask -------------------
-		// ork_recommendations.date_recommended (active rows only). Window math per
-		// recon (see _rfuImpact); Mask released 2026-05-13.
-		$maskDate  = '2026-05-13';
-		$recImpact = $this->_rfuImpact('recommendations', 'date_recommended', $maskDate, 'deleted_at IS NULL');
+        // --- recommendation activity: before vs after Mask -------------------
+        // ork_recommendations.date_recommended (active rows only). Window math per
+        // recon (see _rfuImpact); Mask released 2026-05-13.
+        $maskDate  = '2026-05-13';
+        $recImpact = $this->_rfuImpact('recommendations', 'date_recommended', $maskDate, 'deleted_at IS NULL');
 
-		$featRecActivity = array(
-			'key'         => 'rec_activity',
-			'title'       => 'Recommendation Activity (before vs after)',
-			'description' => 'Monthly award-recommendation submission rate in the 180 days before the 3.5.2 release versus the period since launch (normalized per month).',
-			'kpis' => array(
-				$this->_rfuKpi(
-					'Award recs / month',
-					round($recImpact['afterPerMonth'], 1),
-					null,
-					null,
-					'avg award recommendations per month since 3.5.2 (was ' . $recImpact['beforePerMonth'] . '/mo)',
-					$recImpact['delta'],
-					$recImpact['deltaDir']
-				),
-			),
-			'charts' => array(
-				array(
-					'id'         => 'rfu-impact-mask',
-					'type'       => 'column',
-					'title'      => 'Award recommendations / month: before vs after 3.5.2',
-					'categories' => array('Award recommendations'),
-					'series'     => array(
-						array(
-							'name' => 'Avg/mo before (180d)',
-							'data' => array(round($recImpact['beforePerMonth'], 1)),
-						),
-						array(
-							'name' => 'Avg/mo after',
-							'data' => array(round($recImpact['afterPerMonth'], 1)),
-						),
-					),
-				),
-			),
-		);
+        $featRecActivity = array(
+            'key'         => 'rec_activity',
+            'title'       => 'Recommendation Activity (before vs after)',
+            'description' => 'Monthly award-recommendation submission rate in the 180 days before the 3.5.2 release versus the period since launch (normalized per month).',
+            'kpis' => array(
+                $this->_rfuKpi(
+                    'Award recs / month',
+                    round($recImpact['afterPerMonth'], 1),
+                    null,
+                    null,
+                    'avg award recommendations per month since 3.5.2 (was ' . $recImpact['beforePerMonth'] . '/mo)',
+                    $recImpact['delta'],
+                    $recImpact['deltaDir']
+                ),
+            ),
+            'charts' => array(
+                array(
+                    'id'         => 'rfu-impact-mask',
+                    'type'       => 'column',
+                    'title'      => 'Award recommendations / month: before vs after 3.5.2',
+                    'categories' => array('Award recommendations'),
+                    'series'     => array(
+                        array(
+                            'name' => 'Avg/mo before (180d)',
+                            'data' => array(round($recImpact['beforePerMonth'], 1)),
+                        ),
+                        array(
+                            'name' => 'Avg/mo after',
+                            'data' => array(round($recImpact['afterPerMonth'], 1)),
+                        ),
+                    ),
+                ),
+            ),
+        );
 
-		$release352 = array(
-			'version' => '3.5.2',
-			'name'    => 'Mask',
-			'date'    => '2026-05-13',
-			'blurb'   => 'Profile storytelling: custom nameplates, milestones, and recommendation seconds.',
-			'features' => array($featNameplate, $featViewerFonts, $featMilestones, $featRecSeconds, $featRecActivity),
-		);
+        $release352 = array(
+            'version' => '3.5.2',
+            'name'    => 'Mask',
+            'date'    => '2026-05-13',
+            'blurb'   => 'Profile storytelling: custom nameplates, milestones, and recommendation seconds.',
+            'features' => array($featNameplate, $featViewerFonts, $featMilestones, $featRecSeconds, $featRecActivity),
+        );
 
-		// ====================================================================
-		// RELEASE 3.5.1 — Owl
-		// ====================================================================
+        // ====================================================================
+        // RELEASE 3.5.1 — Owl
+        // ====================================================================
 
-		// --- event RSVP (ork_event_rsvp) -------------------------------------
-		$rsvpTotal = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}event_rsvp`"
-		);
-		$rsvpUsers = $this->_rfuScalar(
-			"SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}event_rsvp`"
-		);
-		$rsvpBreak = $this->_rfuBreakdown(
-			"SELECT status AS k, COUNT(*) AS c FROM `{$p}event_rsvp`
+        // --- event RSVP (ork_event_rsvp) -------------------------------------
+        $rsvpTotal = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}event_rsvp`"
+        );
+        $rsvpUsers = $this->_rfuScalar(
+            "SELECT COUNT(DISTINCT mundane_id) AS c FROM `{$p}event_rsvp`"
+        );
+        $rsvpBreak = $this->_rfuBreakdown(
+            "SELECT status AS k, COUNT(*) AS c FROM `{$p}event_rsvp`
 			 WHERE status IS NOT NULL AND status <> ''
 			 GROUP BY status ORDER BY c DESC, status ASC"
-		);
-		$rsvpGoing = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}event_rsvp` WHERE status = 'going'"
-		);
-		$rsvpInterested = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}event_rsvp` WHERE status = 'interested'"
-		);
+        );
+        $rsvpGoing = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}event_rsvp` WHERE status = 'going'"
+        );
+        $rsvpInterested = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}event_rsvp` WHERE status = 'interested'"
+        );
 
-		// --- RSVP show rate: 'going' RSVPs to PAST events (event_start <= now)
-		// that have a matching attendance sign-in at the SAME event
-		// (event_id - any instance of the event counts). Join/filter mirror the recon ground-truth.
-		$nowStr = date('Y-m-d H:i:s');
-		$nowStr = preg_replace('/[^0-9: -]/', '', $nowStr);
-		$this->db->Clear();
-		$showGoingPast = 0;
-		$showAttended  = 0;
-		$showRow = $this->db->query(
-			"SELECT COUNT(DISTINCT rsvp.rsvp_id) AS going_past,
+        // --- RSVP show rate: 'going' RSVPs to PAST events (event_start <= now)
+        // that have a matching attendance sign-in at the SAME event
+        // (event_id - any instance of the event counts). Join/filter mirror the recon ground-truth.
+        $nowStr = date('Y-m-d H:i:s');
+        $nowStr = preg_replace('/[^0-9: -]/', '', $nowStr);
+        $this->db->Clear();
+        $showGoingPast = 0;
+        $showAttended  = 0;
+        $showRow = $this->db->query(
+            "SELECT COUNT(DISTINCT rsvp.rsvp_id) AS going_past,
 			        COUNT(DISTINCT CASE WHEN att.attendance_id IS NOT NULL THEN rsvp.rsvp_id END) AS going_attended
 			 FROM `{$p}event_rsvp` rsvp
 			 JOIN `{$p}event_calendardetail` cd
@@ -4443,424 +8366,1233 @@ class Report  extends Ork3 {
 			  AND att.event_id = cd.event_id
 			 WHERE rsvp.status = 'going'
 			   AND cd.event_start <= '{$nowStr}'"
-		);
-		if ($showRow !== false && $showRow->next()) {
-			$showGoingPast = (int)$showRow->going_past;
-			$showAttended  = (int)$showRow->going_attended;
-		}
-		$showNoShow   = max(0, $showGoingPast - $showAttended);
-		$showRatePct  = ($showGoingPast > 0)
-			? round(100.0 * $showAttended / $showGoingPast, 2)
-			: null;
+        );
+        if ($showRow !== false && $showRow->next()) {
+            $showGoingPast = (int)$showRow->going_past;
+            $showAttended  = (int)$showRow->going_attended;
+        }
+        $showNoShow   = max(0, $showGoingPast - $showAttended);
+        $showRatePct  = ($showGoingPast > 0)
+            ? round(100.0 * $showAttended / $showGoingPast, 2)
+            : null;
 
-		$featEventRsvp = array(
-			'key'         => 'event_rsvp',
-			'title'       => 'Event RSVP',
-			'description' => 'Players signal attendance on event pages as going or interested.',
-			'kpis' => array(
-				$this->_rfuKpi('Total RSVPs', $rsvpTotal, null, null, 'rows in event RSVP'),
-				$this->_rfuKpi('Unique RSVPers', $rsvpUsers, $denom, $pct($rsvpUsers), 'distinct players who RSVPed'),
-				$this->_rfuKpi("RSVP'd Going", $rsvpGoing, null, null, "RSVPs with status 'going'"),
-				$this->_rfuKpi("RSVP'd Interested", $rsvpInterested, null, null, "RSVPs with status 'interested'"),
-				$this->_rfuKpi(
-					'RSVP show rate',
-					$showAttended,
-					$showGoingPast,
-					$showRatePct,
-					"'going' RSVPs to past events where the player has any attendance/sign-in at that event (matched on player + event_id)",
-					null,
-					null,
-					"of 'going' RSVPs showed up"
-				),
-			),
-			'charts' => array(
-				$this->_rfuChartFromBreakdown('rfu-rsvp', 'pie', 'RSVP status', $rsvpBreak, 'RSVPs'),
-				array(
-					'id'         => 'rfu-rsvp-show',
-					'type'       => 'pie',
-					'title'      => "Attended vs no-show ('going' RSVPs)",
-					'categories' => array('Attended', 'No-show'),
-					'data'       => array($showAttended, $showNoShow),
-				),
-			),
-		);
+        $featEventRsvp = array(
+            'key'         => 'event_rsvp',
+            'title'       => 'Event RSVP',
+            'description' => 'Players signal attendance on event pages as going or interested.',
+            'kpis' => array(
+                $this->_rfuKpi('Total RSVPs', $rsvpTotal, null, null, 'rows in event RSVP'),
+                $this->_rfuKpi('Unique RSVPers', $rsvpUsers, $denom, $pct($rsvpUsers), 'distinct players who RSVPed'),
+                $this->_rfuKpi("RSVP'd Going", $rsvpGoing, null, null, "RSVPs with status 'going'"),
+                $this->_rfuKpi("RSVP'd Interested", $rsvpInterested, null, null, "RSVPs with status 'interested'"),
+                $this->_rfuKpi(
+                    'RSVP show rate',
+                    $showAttended,
+                    $showGoingPast,
+                    $showRatePct,
+                    "'going' RSVPs to past events where the player has any attendance/sign-in at that event (matched on player + event_id)",
+                    null,
+                    null,
+                    "of 'going' RSVPs showed up"
+                ),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-rsvp', 'pie', 'RSVP status', $rsvpBreak, 'RSVPs'),
+                array(
+                    'id'         => 'rfu-rsvp-show',
+                    'type'       => 'pie',
+                    'title'      => "Attended vs no-show ('going' RSVPs)",
+                    'categories' => array('Attended', 'No-show'),
+                    'data'       => array($showAttended, $showNoShow),
+                ),
+            ),
+        );
 
-		$release351 = array(
-			'version' => '3.5.1',
-			'name'    => 'Owl',
-			'date'    => '2026-04-18',
-			'blurb'   => 'A supercharged Event RSVP tab.',
-			'features' => array($featEventRsvp),
-		);
+        $release351 = array(
+            'version' => '3.5.1',
+            'name'    => 'Owl',
+            'date'    => '2026-04-18',
+            'blurb'   => 'A supercharged Event RSVP tab.',
+            'features' => array($featEventRsvp),
+        );
 
-		// ====================================================================
-		// RELEASE 3.5.0 — Dragon
-		// ====================================================================
+        // ====================================================================
+        // RELEASE 3.5.0 — Dragon
+        // ====================================================================
 
-		// --- custom About pages (org design tables) --------------------------
-		$aboutKingdom = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}kingdom_design` WHERE about_enabled = 1"
-		);
-		$aboutPark = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}park_design` WHERE about_enabled = 1"
-		);
-		$aboutUnit = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}unit_design` WHERE about_enabled = 1"
-		);
-		$featCustomAbout = array(
-			'key'         => 'custom_about',
-			'title'       => 'Custom About Pages',
-			'description' => 'Kingdoms, parks and units opt into a designed public About page.',
-			'kpis' => array(
-				$this->_rfuKpi('Kingdoms with About', $aboutKingdom, null, null, 'kingdom_design.about_enabled = 1'),
-				$this->_rfuKpi('Parks with About', $aboutPark, null, null, 'park_design.about_enabled = 1'),
-				$this->_rfuKpi('Units with About', $aboutUnit, null, null, 'unit_design.about_enabled = 1'),
-			),
-			'charts' => array(),
-		);
+        // --- heraldry adoption -----------------------------------------------
+        $playerHeraldry = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE has_heraldry = 1"
+        );
+        $eventHeraldry = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}event` WHERE has_heraldry = 1"
+        );
+        $eventBanner = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}event` WHERE has_banner = 1"
+        );
+        $featHeraldry = array(
+            'key'         => 'heraldry',
+            'title'       => 'Heraldry Adoption',
+            'description' => 'Players and events display custom heraldry and banners.',
+            'kpis' => array(
+                $this->_rfuKpi('Players with heraldry', $playerHeraldry, $denom, $pct($playerHeraldry), 'players with has_heraldry on'),
+                $this->_rfuKpi('Events with heraldry', $eventHeraldry, null, null, 'events with has_heraldry on'),
+                $this->_rfuKpi('Events with a banner', $eventBanner, null, null, 'events with has_banner on'),
+            ),
+            'charts' => array(),
+        );
 
-		// --- heraldry adoption -----------------------------------------------
-		$playerHeraldry = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}mundane` WHERE has_heraldry = 1"
-		);
-		$eventHeraldry = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}event` WHERE has_heraldry = 1"
-		);
-		$eventBanner = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}event` WHERE has_banner = 1"
-		);
-		$featHeraldry = array(
-			'key'         => 'heraldry',
-			'title'       => 'Heraldry Adoption',
-			'description' => 'Players and events display custom heraldry and banners.',
-			'kpis' => array(
-				$this->_rfuKpi('Players with heraldry', $playerHeraldry, $denom, $pct($playerHeraldry), 'players with has_heraldry on'),
-				$this->_rfuKpi('Events with heraldry', $eventHeraldry, null, null, 'events with has_heraldry on'),
-				$this->_rfuKpi('Events with a banner', $eventBanner, null, null, 'events with has_banner on'),
-			),
-			'charts' => array(),
-		);
+        // --- weekly recap ----------------------------------------------------
+        $recapWeeks = $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}weekly_recap`"
+        );
+        $featWeeklyRecap = array(
+            'key'         => 'weekly_recap',
+            'title'       => 'Weekly Recap',
+            'description' => 'Auto-generated weekly digests of kingdom activity.',
+            'kpis' => array(
+                $this->_rfuKpi('Weeks computed', $recapWeeks, null, null, 'rows in weekly recap'),
+            ),
+            'charts' => array(),
+        );
 
-		// --- tournament module -----------------------------------------------
-		$tourTotal = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}tournament`"
-		);
-		$bracketTotal = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}bracket`"
-		);
-		$tourStatusBreak = $this->_rfuBreakdown(
-			"SELECT status AS k, COUNT(*) AS c FROM `{$p}tournament`
-			 WHERE status IS NOT NULL AND status <> ''
-			 GROUP BY status ORDER BY c DESC, status ASC"
-		);
-		$bracketStyleBreak = $this->_rfuBreakdown(
-			"SELECT style AS k, COUNT(*) AS c FROM `{$p}bracket`
-			 WHERE style IS NOT NULL AND style <> ''
-			 GROUP BY style ORDER BY c DESC, style ASC"
-		);
-		$featTournaments = array(
-			'key'         => 'tournaments',
-			'title'       => 'Tournament Module',
-			'description' => 'Organizers run bracketed tournaments tied to events.',
-			'kpis' => array(
-				$this->_rfuKpi('Total tournaments', $tourTotal, null, null, 'rows in tournament'),
-				$this->_rfuKpi('Total brackets', $bracketTotal, null, null, 'rows in bracket'),
-			),
-			'charts' => array(
-				$this->_rfuChartFromBreakdown('rfu-tour-status', 'pie', 'Tournament status', $tourStatusBreak, 'Tournaments'),
-				$this->_rfuChartFromBreakdown('rfu-bracket-style', 'bar', 'Bracket types', $bracketStyleBreak, 'Brackets'),
-			),
-		);
-
-		// --- weekly recap ----------------------------------------------------
-		$recapWeeks = $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}weekly_recap`"
-		);
-		$featWeeklyRecap = array(
-			'key'         => 'weekly_recap',
-			'title'       => 'Weekly Recap',
-			'description' => 'Auto-generated weekly digests of kingdom activity.',
-			'kpis' => array(
-				$this->_rfuKpi('Weeks computed', $recapWeeks, null, null, 'rows in weekly recap'),
-			),
-			'charts' => array(),
-		);
-
-		// --- feature awareness (What's New) ----------------------------------
-		$awarenessBreak = $this->_rfuBreakdown(
-			"SELECT version AS k, COUNT(DISTINCT mundane_id) AS c FROM `{$p}whats_new_seen`
+        // --- feature awareness (What's New) ----------------------------------
+        $awarenessBreak = $this->_rfuBreakdown(
+            "SELECT version AS k, COUNT(DISTINCT mundane_id) AS c FROM `{$p}whats_new_seen`
 			 WHERE version IS NOT NULL AND version <> ''
 			 GROUP BY version ORDER BY version DESC"
-		);
-		// latest version = max version string; its distinct-player count.
-		$latestVersion = '';
-		$latestSeen = 0;
-		foreach ($awarenessBreak as $row) {
-			if ($latestVersion === '' || strcmp($row['k'], $latestVersion) > 0) {
-				$latestVersion = $row['k'];
-				$latestSeen = (int)$row['c'];
-			}
-		}
-		$featAwareness = array(
-			'key'         => 'awareness',
-			'title'       => 'Feature Awareness (What\'s New)',
-			'description' => 'Players are shown a What\'s New modal each release; this tracks who has seen each version.',
-			'kpis' => array(
-				$this->_rfuKpi(
-					'Saw latest (' . ($latestVersion !== '' ? $latestVersion : 'n/a') . ')',
-					$latestSeen,
-					$denom,
-					$pct($latestSeen),
-					'distinct players who saw the newest What\'s New'
-				),
-			),
-			'charts' => array(
-				$this->_rfuChartFromBreakdown('rfu-awareness', 'bar', 'Players who viewed each What\'s-New version', $awarenessBreak, 'Players'),
-			),
-		);
+        );
+        // latest version = max version string; its distinct-player count.
+        $latestVersion = '';
+        $latestSeen = 0;
+        foreach ($awarenessBreak as $row) {
+            if ($latestVersion === '' || strcmp($row['k'], $latestVersion) > 0) {
+                $latestVersion = $row['k'];
+                $latestSeen = (int)$row['c'];
+            }
+        }
+        $featAwareness = array(
+            'key'         => 'awareness',
+            'title'       => 'Feature Awareness (What\'s New)',
+            'description' => 'Players are shown a What\'s New modal each release; this tracks who has seen each version.',
+            'kpis' => array(
+                $this->_rfuKpi(
+                    'Saw latest (' . ($latestVersion !== '' ? $latestVersion : 'n/a') . ')',
+                    $latestSeen,
+                    $denom,
+                    $pct($latestSeen),
+                    'distinct players who saw the newest What\'s New'
+                ),
+            ),
+            'charts' => array(
+                $this->_rfuChartFromBreakdown('rfu-awareness', 'bar', 'Players who viewed each What\'s-New version', $awarenessBreak, 'Players'),
+            ),
+        );
 
-		// --- activity impact: before vs after the Dragon redesign ------------
-		// Events use ork_event_calendardetail.event_start (the scheduled date);
-		// RSVPs use ork_event_rsvp.modified. Window math per recon (see _rfuImpact).
-		$dragonDate = '2026-04-02';
-		$evtImpact  = $this->_rfuImpact('event_calendardetail', 'event_start', $dragonDate);
-		$rsvpImpact = $this->_rfuImpact('event_rsvp', 'modified', $dragonDate);
+        // --- activity impact: before vs after the Dragon redesign ------------
+        // Events use ork_event_calendardetail.event_start (the scheduled date);
+        // RSVPs use ork_event_rsvp.modified. Window math per recon (see _rfuImpact).
+        $dragonDate = '2026-04-02';
+        $evtImpact  = $this->_rfuImpact('event_calendardetail', 'event_start', $dragonDate);
+        $rsvpImpact = $this->_rfuImpact('event_rsvp', 'modified', $dragonDate);
 
-		$featActivityImpact = array(
-			'key'         => 'activity_impact',
-			'title'       => 'Activity Impact (before vs after redesign)',
-			'description' => 'Monthly event-creation and RSVP rates in the 180 days before the 3.5.0 redesign versus the period since launch (normalized per month).',
-			'kpis' => array(
-				$this->_rfuKpi(
-					'Events scheduled / month',
-					round($evtImpact['afterPerMonth'], 1),
-					null,
-					null,
-					'avg events scheduled per month since 3.5.0 (was ' . $evtImpact['beforePerMonth'] . '/mo)',
-					$evtImpact['delta'],
-					$evtImpact['deltaDir']
-				),
-				$this->_rfuKpi(
-					'Event RSVPs / month',
-					round($rsvpImpact['afterPerMonth'], 1),
-					null,
-					null,
-					'avg RSVPs per month since 3.5.0 (was ' . $rsvpImpact['beforePerMonth'] . '/mo)',
-					$rsvpImpact['delta'],
-					$rsvpImpact['deltaDir']
-				),
-			),
-			'charts' => array(
-				array(
-					'id'         => 'rfu-impact-dragon',
-					'type'       => 'column',
-					'title'      => 'Monthly activity: before vs after 3.5.0',
-					'categories' => array('Events scheduled', 'Event RSVPs'),
-					'series'     => array(
-						array(
-							'name' => 'Avg/mo before (180d)',
-							'data' => array(
-								round($evtImpact['beforePerMonth'], 1),
-								round($rsvpImpact['beforePerMonth'], 1),
-							),
-						),
-						array(
-							'name' => 'Avg/mo after',
-							'data' => array(
-								round($evtImpact['afterPerMonth'], 1),
-								round($rsvpImpact['afterPerMonth'], 1),
-							),
-						),
-					),
-				),
-			),
-		);
+        $featActivityImpact = array(
+            'key'         => 'activity_impact',
+            'title'       => 'Activity Impact (before vs after redesign)',
+            'description' => 'Monthly event-creation and RSVP rates in the 180 days before the 3.5.0 redesign versus the period since launch (normalized per month).',
+            'kpis' => array(
+                $this->_rfuKpi(
+                    'Events scheduled / month',
+                    round($evtImpact['afterPerMonth'], 1),
+                    null,
+                    null,
+                    'avg events scheduled per month since 3.5.0 (was ' . $evtImpact['beforePerMonth'] . '/mo)',
+                    $evtImpact['delta'],
+                    $evtImpact['deltaDir']
+                ),
+                $this->_rfuKpi(
+                    'Event RSVPs / month',
+                    round($rsvpImpact['afterPerMonth'], 1),
+                    null,
+                    null,
+                    'avg RSVPs per month since 3.5.0 (was ' . $rsvpImpact['beforePerMonth'] . '/mo)',
+                    $rsvpImpact['delta'],
+                    $rsvpImpact['deltaDir']
+                ),
+            ),
+            'charts' => array(
+                array(
+                    'id'         => 'rfu-impact-dragon',
+                    'type'       => 'column',
+                    'title'      => 'Monthly activity: before vs after 3.5.0',
+                    'categories' => array('Events scheduled', 'Event RSVPs'),
+                    'series'     => array(
+                        array(
+                            'name' => 'Avg/mo before (180d)',
+                            'data' => array(
+                                round($evtImpact['beforePerMonth'], 1),
+                                round($rsvpImpact['beforePerMonth'], 1),
+                            ),
+                        ),
+                        array(
+                            'name' => 'Avg/mo after',
+                            'data' => array(
+                                round($evtImpact['afterPerMonth'], 1),
+                                round($rsvpImpact['afterPerMonth'], 1),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        );
 
-		$release350 = array(
-			'version' => '3.5.0',
-			'name'    => 'Dragon',
-			'date'    => '2026-04-02',
-			'blurb'   => 'The big redesign: new profiles, events, tournaments — plus org-level adoption signals.',
-			'features' => array(
-				$featCustomAbout,
-				$featHeraldry,
-				$featTournaments,
-				$featWeeklyRecap,
-				$featAwareness,
-				$featActivityImpact,
-			),
-		);
+        $release350 = array(
+            'version' => '3.5.0',
+            'name'    => 'Dragon',
+            'date'    => '2026-04-02',
+            'blurb'   => 'The big redesign: new profiles, events, tournaments — plus org-level adoption signals.',
+            'features' => array(
+                $featHeraldry,
+                $featWeeklyRecap,
+                $featAwareness,
+                $featActivityImpact,
+            ),
+        );
 
-		return array(
-			'generated_at' => date('Y-m-d H:i:s'),
-			'totals' => array(
-				'active_players'         => (int)$activePlayers,
-				'players_with_design'    => (int)$playersWithDesign,
-				'active_recommendations' => (int)$activeRecommendations,
-			),
-			'releases' => array($release352, $release351, $release350),
-		);
-	}
+        return array(
+            'generated_at' => date('Y-m-d H:i:s'),
+            'totals' => array(
+                'active_players'         => (int)$activePlayers,
+                'players_with_design'    => (int)$playersWithDesign,
+                'active_recommendations' => (int)$activeRecommendations,
+            ),
+            'releases' => array($release357, $release356, $release355, $release354, $release353, $release352, $release351, $release350),
+        );
+    }
 
-	/**
-	 * Run a single-column scalar COUNT-style query and return it as an int.
-	 * The query MUST alias its scalar as `c`. Matches the file's $this->db
-	 * query/next idiom; Clear() first to drop stale PDO bindings.
-	 */
-	private function _rfuScalar($sql) {
-		$this->db->Clear();
-		$r = $this->db->query($sql);
-		if ($r !== false && $r->next()) {
-			return (int)$r->c;
-		}
-		return 0;
-	}
+    /**
+     * Run a single-column scalar COUNT-style query and return it as an int.
+     * The query MUST alias its scalar as `c`. Matches the file's $this->db
+     * query/next idiom; Clear() first to drop stale PDO bindings.
+     */
+    private function _rfuScalar($sql)
+    {
+        $this->db->Clear();
+        $r = $this->db->query($sql);
+        if ($r !== false && $r->next()) {
+            return (int)$r->c;
+        }
+        return 0;
+    }
 
-	/**
-	 * Count rows of $table where its date column falls inclusively within
-	 * [$start, $end] (Y-m-d strings), with an optional extra WHERE clause.
-	 * Used for release before/after window math.
-	 */
-	private function _rfuWindowCount($table, $dateCol, $start, $end, $extraWhere = '') {
-		$p = DB_PREFIX;
-		// $start/$end are code-generated Y-m-d strings (date()/strtotime), never
-		// user input, so direct inlining matches this file's date-range idiom.
-		$start = preg_replace('/[^0-9-]/', '', $start);
-		$end   = preg_replace('/[^0-9-]/', '', $end);
-		$where = "`{$dateCol}` >= '{$start} 00:00:00'"
-			. " AND `{$dateCol}` <= '{$end} 23:59:59'";
-		if ($extraWhere !== '') {
-			$where .= ' AND ' . $extraWhere;
-		}
-		return $this->_rfuScalar(
-			"SELECT COUNT(*) AS c FROM `{$p}{$table}` WHERE {$where}"
-		);
-	}
+    /**
+     * Count rows of $table where its date column falls inclusively within
+     * [$start, $end] (Y-m-d strings), with an optional extra WHERE clause.
+     * Used for release before/after window math.
+     */
+    private function _rfuWindowCount($table, $dateCol, $start, $end, $extraWhere = '')
+    {
+        $p = DB_PREFIX;
+        // $start/$end are code-generated Y-m-d strings (date()/strtotime), never
+        // user input, so direct inlining matches this file's date-range idiom.
+        $start = preg_replace('/[^0-9-]/', '', $start);
+        $end   = preg_replace('/[^0-9-]/', '', $end);
+        $where = "`{$dateCol}` >= '{$start} 00:00:00'"
+            . " AND `{$dateCol}` <= '{$end} 23:59:59'";
+        if ($extraWhere !== '') {
+            $where .= ' AND ' . $extraWhere;
+        }
+        return $this->_rfuScalar(
+            "SELECT COUNT(*) AS c FROM `{$p}{$table}` WHERE {$where}"
+        );
+    }
 
-	/**
-	 * Compute a before/after per-month impact bundle for a release, matching the
-	 * recon windowDefinition exactly:
-	 *   BEFORE = [release - 180 days, release - 1 day]  -> 180 / 30.44 months
-	 *   AFTER  = [release, today]                       -> inclusive days / 30.44
-	 * Per-month rate = count / months. Delta% = round((after-before)/before*100).
-	 * Divide-by-zero guarded (delta=null, deltaDir='flat' when before rate is 0).
-	 *
-	 * @return array {beforeCount, afterCount, beforePerMonth, afterPerMonth,
-	 *                deltaPct(int|null), delta(string|null), deltaDir}
-	 */
-	private function _rfuImpact($table, $dateCol, $releaseDate, $extraWhere = '') {
-		$today  = date('Y-m-d');
-		$relTs  = strtotime($releaseDate);
-		$beforeStart = date('Y-m-d', strtotime('-180 days', $relTs));
-		$beforeEnd   = date('Y-m-d', strtotime('-1 day', $relTs));
+    /**
+     * Compute a before/after per-month impact bundle for a release, matching the
+     * recon windowDefinition exactly:
+     *   BEFORE = [release - 180 days, release - 1 day]  -> 180 / 30.44 months
+     *   AFTER  = [release, today]                       -> inclusive days / 30.44
+     * Per-month rate = count / months. Delta% = round((after-before)/before*100).
+     * Divide-by-zero guarded (delta=null, deltaDir='flat' when before rate is 0).
+     *
+     * @return array {beforeCount, afterCount, beforePerMonth, afterPerMonth,
+     *                deltaPct(int|null), delta(string|null), deltaDir}
+     */
+    private function _rfuImpact($table, $dateCol, $releaseDate, $extraWhere = '')
+    {
+        $today  = date('Y-m-d');
+        $relTs  = strtotime($releaseDate);
+        $beforeStart = date('Y-m-d', strtotime('-180 days', $relTs));
+        $beforeEnd   = date('Y-m-d', strtotime('-1 day', $relTs));
 
-		$beforeCount = $this->_rfuWindowCount($table, $dateCol, $beforeStart, $beforeEnd, $extraWhere);
-		$afterCount  = $this->_rfuWindowCount($table, $dateCol, $releaseDate, $today, $extraWhere);
+        $beforeCount = $this->_rfuWindowCount($table, $dateCol, $beforeStart, $beforeEnd, $extraWhere);
+        $afterCount  = $this->_rfuWindowCount($table, $dateCol, $releaseDate, $today, $extraWhere);
 
-		// Inclusive day spans -> month equivalents (30.44 days/month, per recon).
-		$beforeMonths = 180 / 30.44;
-		$afterDays    = (int)round((strtotime($today) - $relTs) / 86400) + 1; // inclusive
-		$afterMonths  = $afterDays / 30.44;
+        // Inclusive day spans -> month equivalents (30.44 days/month, per recon).
+        $beforeMonths = 180 / 30.44;
+        $afterDays    = (int)round((strtotime($today) - $relTs) / 86400) + 1; // inclusive
+        $afterMonths  = $afterDays / 30.44;
 
-		$beforePerMonth = ($beforeMonths > 0) ? round($beforeCount / $beforeMonths, 1) : 0.0;
-		$afterPerMonth  = ($afterMonths > 0) ? round($afterCount / $afterMonths, 1) : 0.0;
+        $beforePerMonth = ($beforeMonths > 0) ? round($beforeCount / $beforeMonths, 1) : 0.0;
+        $afterPerMonth  = ($afterMonths > 0) ? round($afterCount / $afterMonths, 1) : 0.0;
 
-		if ($beforePerMonth > 0) {
-			$deltaPct = (int)round((($afterPerMonth - $beforePerMonth) / $beforePerMonth) * 100);
-			$delta    = ($deltaPct >= 0 ? '+' : '') . $deltaPct . '%';
-			if ($afterPerMonth > $beforePerMonth) {
-				$deltaDir = 'up';
-			} elseif ($afterPerMonth < $beforePerMonth) {
-				$deltaDir = 'down';
-			} else {
-				$deltaDir = 'flat';
-			}
-		} else {
-			$deltaPct = null;
-			$delta    = null;
-			$deltaDir = 'flat';
-		}
+        if ($beforePerMonth > 0) {
+            $deltaPct = (int)round((($afterPerMonth - $beforePerMonth) / $beforePerMonth) * 100);
+            $delta    = ($deltaPct >= 0 ? '+' : '') . $deltaPct . '%';
+            if ($afterPerMonth > $beforePerMonth) {
+                $deltaDir = 'up';
+            } elseif ($afterPerMonth < $beforePerMonth) {
+                $deltaDir = 'down';
+            } else {
+                $deltaDir = 'flat';
+            }
+        } else {
+            $deltaPct = null;
+            $delta    = null;
+            $deltaDir = 'flat';
+        }
 
-		return array(
-			'beforeCount'    => (int)$beforeCount,
-			'afterCount'     => (int)$afterCount,
-			'beforePerMonth' => $beforePerMonth,
-			'afterPerMonth'  => $afterPerMonth,
-			'deltaPct'       => $deltaPct,
-			'delta'          => $delta,
-			'deltaDir'       => $deltaDir,
-		);
-	}
+        return array(
+            'beforeCount'    => (int)$beforeCount,
+            'afterCount'     => (int)$afterCount,
+            'beforePerMonth' => $beforePerMonth,
+            'afterPerMonth'  => $afterPerMonth,
+            'deltaPct'       => $deltaPct,
+            'delta'          => $delta,
+            'deltaDir'       => $deltaDir,
+        );
+    }
 
-	/**
-	 * Run a "SELECT <label> AS k, COUNT(*) AS c ... GROUP BY ..." query and
-	 * return an ordered array of ['k' => label, 'c' => int count] rows.
-	 */
-	private function _rfuBreakdown($sql) {
-		$this->db->Clear();
-		$out = array();
-		$r = $this->db->query($sql);
-		if ($r !== false && $r->size() > 0) {
-			while ($r->next()) {
-				$out[] = array('k' => (string)$r->k, 'c' => (int)$r->c);
-			}
-		}
-		return $out;
-	}
+    /**
+     * Run a "SELECT <label> AS k, COUNT(*) AS c ... GROUP BY ..." query and
+     * return an ordered array of ['k' => label, 'c' => int count] rows.
+     */
+    private function _rfuBreakdown($sql)
+    {
+        $this->db->Clear();
+        $out = array();
+        $r = $this->db->query($sql);
+        if ($r !== false && $r->size() > 0) {
+            while ($r->next()) {
+                $out[] = array('k' => (string)$r->k, 'c' => (int)$r->c);
+            }
+        }
+        return $out;
+    }
 
-	/**
-	 * Build one KPI tile entry for the data contract.
-	 *
-	 * @param string|null $delta    Preformatted signed percent string (e.g. '+37%'); null when N/A.
-	 * @param string|null $deltaDir 'up' | 'down' | 'flat' — drives the colored delta pill.
-	 */
-	private function _rfuKpi($label, $value, $denom, $pct, $hint, $delta = null, $deltaDir = null, $pctLabel = null, $suffix = null) {
-		$kpi = array(
-			'label'    => $label,
-			'value'    => $value,
-			'denom'    => ($denom === null) ? null : (int)$denom,
-			'pct'      => ($pct === null) ? null : $pct,
-			'hint'     => ($hint === null) ? null : $hint,
-			'delta'    => ($delta === null) ? null : (string)$delta,
-			'deltaDir' => ($deltaDir === null) ? 'flat' : $deltaDir,
-		);
-		if ($pctLabel !== null && $pctLabel !== '') {
-			$kpi['pctLabel'] = (string)$pctLabel;
-		}
-		if ($suffix !== null && $suffix !== '') {
-			$kpi['suffix'] = (string)$suffix;
-		}
-		return $kpi;
-	}
+    /**
+     * Build one KPI tile entry for the data contract.
+     *
+     * @param string|null $delta    Preformatted signed percent string (e.g. '+37%'); null when N/A.
+     * @param string|null $deltaDir 'up' | 'down' | 'flat' — drives the colored delta pill.
+     */
+    private function _rfuKpi($label, $value, $denom, $pct, $hint, $delta = null, $deltaDir = null, $pctLabel = null, $suffix = null, $decimals = 0)
+    {
+        $kpi = array(
+            'label'    => $label,
+            'value'    => $value,
+            'denom'    => ($denom === null) ? null : (int)$denom,
+            'pct'      => ($pct === null) ? null : $pct,
+            'hint'     => ($hint === null) ? null : $hint,
+            'delta'    => ($delta === null) ? null : (string)$delta,
+            'deltaDir' => ($deltaDir === null) ? 'flat' : $deltaDir,
+        );
+        if ($pctLabel !== null && $pctLabel !== '') {
+            $kpi['pctLabel'] = (string)$pctLabel;
+        }
+        if ($suffix !== null && $suffix !== '') {
+            $kpi['suffix'] = (string)$suffix;
+        }
+        // Rates and averages carry a decimal place; plain counts render whole.
+        if ((int)$decimals > 0) {
+            $kpi['decimals'] = (int)$decimals;
+        }
+        return $kpi;
+    }
 
-	/**
-	 * Convert a breakdown array into a chart entry. Always emits a valid chart
-	 * (empty categories/data when the breakdown is empty) so the template can
-	 * render a graceful "No data yet" state.
-	 *
-	 * @param string $type 'column' | 'bar' | 'pie'
-	 */
-	private function _rfuChartFromBreakdown($id, $type, $title, $breakdown, $seriesName = 'Count') {
-		$categories = array();
-		$data = array();
-		foreach ($breakdown as $row) {
-			$categories[] = $row['k'];
-			$data[] = (int)$row['c'];
-		}
-		$chart = array(
-			'id'         => $id,
-			'type'       => $type,
-			'title'      => $title,
-			'categories' => $categories,
-		);
-		if ($type === 'pie') {
-			$chart['data'] = $data;
-		} else {
-			$chart['series'] = array(
-				array('name' => $seriesName, 'data' => $data),
-			);
-		}
-		return $chart;
-	}
+    /**
+     * Format a raw DB datetime as a human-readable date. The project never
+     * surfaces raw ISO timestamps, so link-tile subtitles go through here.
+     * Returns null for empty / zero / unparseable values so the tile simply
+     * omits the subtitle rather than printing a bogus date.
+     */
+    private function _rfuNiceDate($raw)
+    {
+        if ($raw === null || $raw === '' || strncmp((string)$raw, '0000-00-00', 10) === 0) {
+            return null;
+        }
+        $ts = strtotime((string)$raw);
+        return ($ts === false) ? null : date('F j, Y', $ts);
+    }
+
+    /**
+     * Build one link-tile entry for the data contract. Always emits a valid tile
+     * (empty items[] when there is nothing to link) so the template can render a
+     * graceful empty state, mirroring _rfuChartFromBreakdown's contract.
+     *
+     * @param array $rows Each ['label' => string, 'route' => string, 'sub' => string|null].
+     *                    Rows with a blank label are skipped.
+     */
+    private function _rfuLinkTile($title, $rows)
+    {
+        $items = array();
+        foreach ($rows as $row) {
+            $label = isset($row['label']) ? trim((string)$row['label']) : '';
+            if ($label === '') {
+                continue;
+            }
+            $item = array(
+                'label' => $label,
+                'route' => (string)$row['route'],
+            );
+            if (isset($row['sub']) && $row['sub'] !== null && $row['sub'] !== '') {
+                $item['sub'] = (string)$row['sub'];
+            }
+            $items[] = $item;
+        }
+        return array(
+            'title' => $title,
+            'items' => $items,
+        );
+    }
+
+    /**
+     * Build a "3 random example events" link tile for a Rose event feature.
+     * Every Rose event table keys on event_calendardetail_id, so the route needs
+     * both ids: join up to the occurrence for event_id and to the event for its
+     * name. $table / $extraWhere are code-supplied constants, never user input.
+     *
+     * @param string $table      Event child table, minus the DB prefix.
+     * @param string $extraWhere Optional additional filter on that table (alias `src`).
+     */
+    private function _rfuEventLinkTile($title, $table, $extraWhere = '')
+    {
+        $p = DB_PREFIX;
+        $where = "e.name IS NOT NULL AND e.name <> ''";
+        if ($extraWhere !== '') {
+            $where .= ' AND ' . $extraWhere;
+        }
+        $this->db->Clear();
+        $rows = array();
+        $r = $this->db->query(
+            "SELECT DISTINCT e.name AS label, cd.event_id AS eid,
+					cd.event_calendardetail_id AS cdid, cd.event_start AS starts
+			   FROM `{$p}{$table}` src
+			   JOIN `{$p}event_calendardetail` cd ON cd.event_calendardetail_id = src.event_calendardetail_id
+			   JOIN `{$p}event` e ON e.event_id = cd.event_id
+			  WHERE {$where}
+			  ORDER BY RAND() LIMIT 3"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $rows[] = array(
+                    'label' => $r->label,
+                    'route' => 'Event/detail/' . (int)$r->eid . '/' . (int)$r->cdid,
+                    'sub'   => $this->_rfuNiceDate($r->starts),
+                );
+            }
+        }
+        return $this->_rfuLinkTile($title, $rows);
+    }
+
+    /**
+     * Build the full list of active kingdoms that have a qualification-test switch
+     * turned on, as a link tile. The switch lives in ork_configuration and its
+     * value is JSON round-tripped, so the stored literal is '"1"' (quotes included).
+     * $key is a code-supplied constant, never user input, but it is whitelisted
+     * anyway since it is inlined into the SQL.
+     *
+     * @param string $key 'QualTestReeveEnabled' | 'QualTestCorporaEnabled'
+     */
+    private function _rfuQualKingdomTile($title, $key)
+    {
+        $p = DB_PREFIX;
+        $allowed = array('QualTestReeveEnabled', 'QualTestCorporaEnabled');
+        if (!in_array($key, $allowed, true)) {
+            return $this->_rfuLinkTile($title, array());
+        }
+        $this->db->Clear();
+        $rows = array();
+        $r = $this->db->query(
+            "SELECT k.kingdom_id, k.name
+			   FROM `{$p}configuration` cfg
+			   JOIN `{$p}kingdom` k ON k.kingdom_id = cfg.id AND k.active = 'Active'
+			  WHERE cfg.type = 'Kingdom' AND cfg.`key` = '{$key}' AND cfg.value = '\"1\"'
+			  ORDER BY k.name ASC"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $rows[] = array(
+                    'label' => $r->name,
+                    'route' => 'Kingdom/index/' . (int)$r->kingdom_id,
+                );
+            }
+        }
+        return $this->_rfuLinkTile($title, $rows);
+    }
+
+    /**
+     * Every active kingdom with its shared-question-library state, by name.
+     * shares   — a saved REEVE qual_config row with share_questions = 1 (no row = out).
+     * reeve_on — the QualTestReeveEnabled switch is on ('"1"', JSON round-tripped).
+     * shared_q — active Reeve questions in a PUBLISHED version, i.e. what the
+     *            kingdom would put in the library; mirrors the join in
+     *            QualTest::getLibraryQuestions() minus the share filter.
+     *
+     * @return array list of ['kingdom_id' => int, 'name' => string, 'shares' => bool, 'reeve_on' => bool, 'shared_q' => int]
+     */
+    private function _rfuQualSharingKingdoms()
+    {
+        $p = DB_PREFIX;
+        $this->db->Clear();
+        $rows = array();
+        $r = $this->db->query(
+            "SELECT k.kingdom_id, k.name,
+					COALESCE(qc.share_questions, 0) AS shares,
+					EXISTS (
+						SELECT 1 FROM `{$p}configuration` cfg
+						 WHERE cfg.type = 'Kingdom' AND cfg.id = k.kingdom_id
+						   AND cfg.`key` = 'QualTestReeveEnabled' AND cfg.value = '\"1\"'
+					) AS reeve_on,
+					(
+						SELECT COUNT(DISTINCT q.qual_question_id)
+						  FROM `{$p}qual_question` q
+						  JOIN `{$p}qual_set_question` sq ON sq.qual_question_id = q.qual_question_id
+						  JOIN `{$p}qual_question_set` s
+						    ON s.qual_question_set_id = sq.qual_question_set_id
+						   AND s.kingdom_id = q.kingdom_id AND s.test_type = 'reeve' AND s.status = 'published'
+						 WHERE q.kingdom_id = k.kingdom_id AND q.test_type = 'reeve' AND q.status = 'active'
+					) AS shared_q
+			   FROM `{$p}kingdom` k
+			   LEFT JOIN `{$p}qual_config` qc
+			     ON qc.kingdom_id = k.kingdom_id AND qc.test_type = 'reeve'
+			  WHERE k.active = 'Active'
+			  ORDER BY k.name ASC"
+        );
+        if ($r !== false) {
+            while ($r->next()) {
+                $rows[] = array(
+                    'kingdom_id' => (int)$r->kingdom_id,
+                    'name'       => $r->name,
+                    'shares'     => ((int)$r->shares === 1),
+                    'reeve_on'   => ((int)$r->reeve_on === 1),
+                    'shared_q'   => (int)$r->shared_q,
+                );
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * Build a link tile listing kingdoms from a caller-supplied query. The query
+     * must select kingdom_id, name and a count aliased `c`; each tile row links to
+     * the kingdom and carries "<c> <noun>" as its subtitle. $sql is assembled from
+     * code constants by the caller, never from user input.
+     *
+     * @param string $singular Subtitle noun when c is 1 (e.g. 'court').
+     * @param string $plural   Subtitle noun otherwise (e.g. 'courts').
+     */
+    private function _rfuKingdomTileFromSql($title, $sql, $singular, $plural)
+    {
+        $this->db->Clear();
+        $rows = array();
+        $r = $this->db->query($sql);
+        if ($r !== false) {
+            while ($r->next()) {
+                $count  = (int)$r->c;
+                $rows[] = array(
+                    'label' => $r->name,
+                    'route' => 'Kingdom/index/' . (int)$r->kingdom_id,
+                    'sub'   => number_format($count) . ' ' . ($count === 1 ? $singular : $plural),
+                );
+            }
+        }
+        return $this->_rfuLinkTile($title, $rows);
+    }
+
+    /**
+     * Convert a breakdown array into a chart entry. Always emits a valid chart
+     * (empty categories/data when the breakdown is empty) so the template can
+     * render a graceful "No data yet" state.
+     *
+     * @param string $type 'column' | 'bar' | 'pie'
+     */
+    private function _rfuChartFromBreakdown($id, $type, $title, $breakdown, $seriesName = 'Count')
+    {
+        $categories = array();
+        $data = array();
+        foreach ($breakdown as $row) {
+            $categories[] = $row['k'];
+            $data[] = (int)$row['c'];
+        }
+        $chart = array(
+            'id'         => $id,
+            'type'       => $type,
+            'title'      => $title,
+            'categories' => $categories,
+        );
+        if ($type === 'pie') {
+            $chart['data'] = $data;
+        } else {
+            $chart['series'] = array(
+                array('name' => $seriesName, 'data' => $data),
+            );
+        }
+        return $chart;
+    }
+
+    /**
+     * Admin dashboard YoY trend stats and prior-period kingdom attendance keys (T-ADM-01).
+     *
+     * @return array{
+     *   TrendStats: array<string, int>,
+     *   PrevWeekly: array<int, int>,
+     *   PrevMonthly: array<int, int>
+     * }
+     */
+    public function GetAdminDashboardStats($Token = null): array
+    {
+        $auth = $this->_authorizeGlobalAdmin($Token);
+        if ($auth !== null) {
+            return $auth;
+        }
+
+        $thisYearStart = date('Y') . '-01-01';
+        $lastYearStart = (date('Y') - 1) . '-01-01';
+        $lastYearEnd = date('Y-m-d', strtotime('-1 year'));
+        $now1yr = date('Y-m-d');
+        $prev1yrStart = date('Y-m-d', strtotime('-2 years'));
+        $prev1yrEnd = date('Y-m-d', strtotime('-1 year'));
+
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            "SELECT
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$thisYearStart' AND entered_at < '$now1yr') AS awards_cur,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "awards WHERE entered_at >= '$lastYearStart' AND entered_at < '$lastYearEnd') AS awards_prev,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$thisYearStart' AND date < '$now1yr' AND mundane_id > 0) AS att_cur,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "attendance WHERE date >= '$lastYearStart' AND date < '$lastYearEnd' AND mundane_id > 0) AS att_prev,
+              (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrEnd' AND date < '$now1yr' AND mundane_id > 0) AS players_cur,
+              (SELECT COUNT(DISTINCT mundane_id) FROM " . DB_PREFIX . "attendance WHERE date >= '$prev1yrStart' AND date < '$prev1yrEnd' AND mundane_id > 0) AS players_prev,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$thisYearStart' AND date_recommended < '$now1yr' AND deleted_at IS NULL) AS recs_cur,
+              (SELECT COUNT(*) FROM " . DB_PREFIX . "recommendations WHERE date_recommended >= '$lastYearStart' AND date_recommended < '$lastYearEnd' AND deleted_at IS NULL) AS recs_prev"
+        );
+        $trendStats = [
+            'awards_cur' => 0, 'awards_prev' => 0, 'att_cur' => 0, 'att_prev' => 0,
+            'players_cur' => 0, 'players_prev' => 0, 'recs_cur' => 0, 'recs_prev' => 0,
+        ];
+        if ($rs && $rs->Next()) {
+            foreach ($trendStats as $k => $_) {
+                $trendStats[$k] = (int) $rs->$k;
+            }
+        }
+
+        $this->db->Clear();
+        $prevWkRs = $this->db->DataSet(
+            'SELECT COUNT(mw.mundane_id) AS att, mw.kingdom_id
+             FROM (
+                 SELECT mundane_id, date_year, date_week3, kingdom_id
+                 FROM ' . DB_PREFIX . 'attendance
+                 WHERE date >  DATE_SUB(CURDATE(), INTERVAL 52 WEEK)
+                   AND date <= DATE_SUB(CURDATE(), INTERVAL 26 WEEK)
+                   AND mundane_id > 0
+                 GROUP BY date_year, date_week3, mundane_id, kingdom_id
+             ) mw
+             GROUP BY mw.kingdom_id'
+        );
+        $prevWeekly = [];
+        if ($prevWkRs) {
+            while ($prevWkRs->Next()) {
+                $prevWeekly[(int) $prevWkRs->kingdom_id] = (int) $prevWkRs->att;
+            }
+        }
+
+        $this->db->Clear();
+        $prevMoRs = $this->db->DataSet(
+            'SELECT COUNT(mm.mundane_id) AS mo, mm.kingdom_id
+             FROM (
+                 SELECT mundane_id, date_year, date_month, kingdom_id
+                 FROM ' . DB_PREFIX . 'attendance
+                 WHERE date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+                   AND date <  DATE_SUB(CURDATE(), INTERVAL 12 MONTH)
+                   AND mundane_id > 0
+                 GROUP BY date_year, date_month, mundane_id, kingdom_id
+             ) mm
+             GROUP BY mm.kingdom_id'
+        );
+        $prevMonthly = [];
+        if ($prevMoRs) {
+            while ($prevMoRs->Next()) {
+                $prevMonthly[(int) $prevMoRs->kingdom_id] = (int) $prevMoRs->mo;
+            }
+        }
+
+        return [
+            'TrendStats' => $trendStats,
+            'PrevWeekly' => $prevWeekly,
+            'PrevMonthly' => $prevMonthly,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetVotingRules($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+
+        return [
+            'Status' => Success(),
+            'Rules' => VotingRules::allRules(),
+            'SupportedKingdomIds' => VotingRules::supportedKingdomIds(),
+            'KingdomRules' => $kingdomId > 0 ? VotingRules::rulesForKingdom($kingdomId) : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetVotingEligibleForPlayer($request)
+    {
+        $mundaneId = valid_id($request['MundaneId'] ?? 0) ? (int) $request['MundaneId'] : 0;
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+
+        if ($mundaneId <= 0) {
+            return ['Status' => InvalidParameter(), 'Players' => [], 'KingdomId' => 0];
+        }
+
+        // Deliberately UNGATED (C-22 regression, fixed 2026-08-22): this getter
+        // powers the voting-eligibility badge on the PUBLIC player profile, for
+        // any viewer, logged in or not. It discloses only booleans derived from
+        // facts the profile already displays (awards, attendance recency). The
+        // roster-level voting getters remain token-gated.
+
+        if ($kingdomId <= 0) {
+            $this->db->Clear();
+            $row = $this->db->DataSet(
+                'SELECT kingdom_id FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ' . $mundaneId . ' LIMIT 1'
+            );
+            if (!$row || !$row->Next()) {
+                return ['Status' => InvalidParameter(), 'Players' => [], 'KingdomId' => 0];
+            }
+            $kingdomId = (int) $row->kingdom_id;
+        }
+
+        $result = $this->GetVotingEligible([
+            'KingdomId' => $kingdomId,
+            'MundaneId' => $mundaneId,
+        ]);
+        $result['KingdomId'] = $kingdomId;
+
+        return $result;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    /**
+     * Distinct players credited with attendance at a park today — the
+     * "is there many people at field?" number for the public park page.
+     * UNGATED: park-level aggregate, same class of data as the public Live
+     * map. Real-time only for parks using QR sign-in links; reeve-entered
+     * attendance appears when it's typed in. In-person only: online sign-ins
+     * are not people physically on the field. (No cache layer: nothing stale.)
+     */
+    public function GetParkFieldCountToday($request)
+    {
+        $park_id = valid_id($request['ParkId'] ?? 0) ? (int)$request['ParkId'] : 0;
+        if ($park_id <= 0) {
+            return array('Status' => InvalidParameter(), 'Count' => 0);
+        }
+        $r = $this->db->query(
+            'SELECT COUNT(DISTINCT a.mundane_id) AS c FROM ' . DB_PREFIX . "attendance a
+			 WHERE a.park_id = $park_id AND a.date = CURDATE()" . Attendance::TypeClause('in_person', 'a')
+        );
+        $count = 0;
+        if ($r !== false && $r->size() > 0 && $r->next()) {
+            $count = (int)$r->c;
+        }
+        return array('Status' => Success(), 'Count' => $count);
+    }
+
+    public function GetAttendanceDates($request)
+    {
+        $type = $request['Type'] ?? 'Kingdom';
+        $id = (int) ($request['Id'] ?? 0);
+        if ($id <= 0) {
+            return ['Status' => InvalidParameter(), 'Dates' => []];
+        }
+
+        // Deliberately UNGATED (C-22 over-gating, fixed 2026-08-22): this
+        // backs the PUBLIC attendance report (Controller_Reports public list);
+        // it returns only the distinct park-day dates that report already
+        // displays to anonymous visitors.
+
+        $col = ($type === 'Kingdom') ? 'kingdom_id' : 'park_id';
+        $this->db->Clear();
+        $rs = $this->db->DataSet(
+            'SELECT DISTINCT DATE(date) AS att_date FROM ' . DB_PREFIX . "attendance WHERE {$col} = {$id} ORDER BY att_date DESC"
+        );
+        $dates = [];
+        if ($rs) {
+            while ($rs->Next()) {
+                $dates[] = $rs->att_date;
+            }
+        }
+
+        return ['Status' => Success(), 'Dates' => $dates];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function GetKingdomOfficerDirectoryMerged($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : null;
+        // Deliberately UNGATED (C-22 over-gating, fixed 2026-08-22): the
+        // officer directory is on Controller_Reports' PUBLIC report list and
+        // officer identities are already public on every kingdom/park page.
+        // The C-22 gate made the public directory render empty for everyone
+        // but ORK admins.
+
+        $r = $this->KingdomOfficerDirectory($request);
+        if (($r['Status']['Status'] ?? 1) != 0) {
+            return [
+                'Status' => $r['Status'],
+                'Rows' => [],
+                'Mode' => 'kingdoms',
+                'Principalities' => [],
+            ];
+        }
+
+        $principalities = [];
+        if (valid_id($kingdomId) && Ork3::$Lib->kingdom->StatsIncludesPrincipalities($kingdomId)) {
+            $prList = Ork3::$Lib->kingdom->GetPrincipalities(['KingdomId' => $kingdomId]);
+            foreach (($prList['Principalities'] ?? []) as $pr) {
+                $prId = (int) $pr['KingdomId'];
+                $dir = $this->KingdomOfficerDirectory(['KingdomId' => $prId]);
+                if (($dir['Status']['Status'] ?? 1) == 0 && !empty($dir['Kingdoms'])) {
+                    $principalities[] = [
+                        'KingdomId' => $prId,
+                        'Name' => $pr['Name'],
+                        'Rows' => $dir['Kingdoms'],
+                    ];
+                }
+            }
+        }
+
+        return [
+            'Status' => Success(),
+            'Rows' => $r['Kingdoms'],
+            'Mode' => $r['Mode'],
+            'Principalities' => $principalities,
+        ];
+    }
+
+    /**
+     * Ladder awards grid report assembly (T-RPT-01).
+     *
+     * @return array{ScopeName: string, LadderAwards: array<int, array<string, mixed>>, GridRows: list<array<string, mixed>>}
+     */
+    public function GetLadderAwardGrid($request)
+    {
+        $kingdomId = valid_id($request['KingdomId'] ?? 0) ? (int) $request['KingdomId'] : 0;
+        $parkId = valid_id($request['ParkId'] ?? 0) ? (int) $request['ParkId'] : 0;
+        $type = $parkId > 0 ? 'Park' : 'Kingdom';
+        $id = $parkId > 0 ? $parkId : $kingdomId;
+
+        if ($parkId <= 0 && $kingdomId <= 0) {
+            return [
+                'Status' => InvalidParameter(),
+                'ScopeName' => '',
+                'LadderAwards' => [],
+                'GridRows' => [],
+            ];
+        }
+        // Any valid session, no officer authority (C-22 over-gating, fixed
+        // 2026-08-22): the kingdom/park Reports tab offers this grid to EVERY
+        // logged-in player, and it shows only award data that is public on
+        // player profiles. The officer-scope gate made it render empty for
+        // ordinary players.
+        if (!valid_id(Ork3::$Lib->authorization->IsAuthorized($request['Token'] ?? ''))) {
+            return [
+                'Status' => BadToken(),
+                'ScopeName' => '',
+                'LadderAwards' => [],
+                'GridRows' => [],
+            ];
+        }
+
+        $scopeName = '';
+        if ($parkId > 0) {
+            $this->db->Clear();
+            $nr = $this->db->DataSet(
+                'SELECT p.name AS park_name, k.name AS kingdom_name
+                 FROM ' . DB_PREFIX . 'park p
+                 LEFT JOIN ' . DB_PREFIX . 'kingdom k ON k.kingdom_id = p.kingdom_id
+                 WHERE p.park_id = ' . $parkId . ' LIMIT 1'
+            );
+            if ($nr && $nr->Next()) {
+                $scopeName = $nr->kingdom_name . ' — ' . $nr->park_name;
+            }
+        } elseif ($kingdomId > 0) {
+            $this->db->Clear();
+            $nr = $this->db->DataSet(
+                'SELECT name FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $kingdomId . ' LIMIT 1'
+            );
+            if ($nr && $nr->Next()) {
+                $scopeName = $nr->name;
+            }
+        }
+
+        if ($kingdomId > 0) {
+            $kSql = 'SELECT DISTINCT a.award_id, IFNULL(ka.name, a.name) AS award_name, a.title_class
+                     FROM ' . DB_PREFIX . 'kingdomaward ka
+                     JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+                     WHERE ka.kingdom_id = ' . $kingdomId . "
+                       AND a.is_ladder = 1 AND a.award_id != 31
+                     ORDER BY IFNULL(ka.name, a.name)";
+        } else {
+            $kSql = 'SELECT DISTINCT a.award_id, a.name AS award_name, a.title_class
+                     FROM ' . DB_PREFIX . "award a
+                     WHERE a.is_ladder = 1 AND a.award_id != 31
+                     ORDER BY a.name";
+        }
+
+        $knightGroupMap = self::ladderKnightGroupMap();
+
+        $this->db->Clear();
+        $awardResult = $this->db->DataSet($kSql);
+        $awardCols = [];
+        $realAwardIds = [];
+        if ($awardResult) {
+            while ($awardResult->Next()) {
+                if (!$awardResult->award_id) {
+                    continue;
+                }
+                $name = $awardResult->award_name;
+                $realAwardIds[] = (int) $awardResult->award_id;
+                $awardCols[(int) $awardResult->award_id] = [
+                    'Name' => $name,
+                    'DisplayName' => preg_replace('/^Order of (?:the )?/i', '', $name),
+                    'KnightGroup' => $knightGroupMap[$name] ?? '',
+                ];
+            }
+        }
+
+        // Kingdom-original ladders (Order of the Hunter and friends) have no
+        // ork_award row at all, so the join above cannot reach them and
+        // a.is_ladder is never 1 for them. They were silently absent from this
+        // grid -- Northern Lights showed 15 columns and no Hunter, against 455
+        // grants. Add them as their own columns, keyed "k<kingdomaward_id>"
+        // because they all share award_id 0 and would otherwise collide.
+        // The template keys columns opaquely and already has an ungrouped
+        // (KnightGroup = '') bucket, so it needs no change.
+        $pseudoKaIds = [];
+        $pseudoScopeKingdomId = $kingdomId;
+        if ($pseudoScopeKingdomId <= 0 && $parkId > 0) {
+            $this->db->Clear();
+            $pkr = $this->db->DataSet(
+                'SELECT kingdom_id FROM ' . DB_PREFIX . 'park WHERE park_id = ' . $parkId . ' LIMIT 1'
+            );
+            if ($pkr && $pkr->Next()) {
+                $pseudoScopeKingdomId = (int) $pkr->kingdom_id;
+            }
+        }
+
+        // Walk up the parent_kingdom_id chain. A principality's members hold the
+        // PARENT kingdom's awards -- 45 active Painted Skies players hold Northern
+        // Lights' Order of the Hunter -- so the parent's kingdom-original ladders
+        // belong on the principality's grid. Real ladders already behave this way
+        // for free, because they resolve through ka.award_id to one shared
+        // ork_award row no matter which kingdom granted them; only these, keyed
+        // per kingdom, needed saying out loud.
+        // Visited set + depth cap, mirroring Authorization::HasAuthority, so a
+        // corrupt or cyclic parent_kingdom_id cannot loop.
+        $scopeKingdomIds = [];
+        $walk = $pseudoScopeKingdomId;
+        while ($walk > 0 && !in_array($walk, $scopeKingdomIds, true) && count($scopeKingdomIds) < 10) {
+            $scopeKingdomIds[] = $walk;
+            $this->db->Clear();
+            $pr = $this->db->DataSet(
+                'SELECT parent_kingdom_id FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ' . $walk . ' LIMIT 1'
+            );
+            $walk = ($pr && $pr->Next()) ? (int) $pr->parent_kingdom_id : 0;
+        }
+
+        // One column per LADDER, not per kingdomaward row. A principality that
+        // splits off keeps running the parent's ladder under a row of its own:
+        // all four Crimson Sands players who hold both Roach rows continue the
+        // numbering rather than restarting (DW 1,2,3 -> CS 4,5,6), and the dates
+        // confirm the order. Splitting those across two columns would cut one
+        // person's progression in half, so rows whose names agree once
+        // "Order of the" is stripped are merged and the grid shows their best.
+        $pseudoCandidates = Award::pseudoLadderKingdomAwardIds();
+        $pseudoGroups = [];
+        if ($scopeKingdomIds !== [] && $pseudoCandidates !== []) {
+            $this->db->Clear();
+            $pseudoResult = $this->db->DataSet(
+                'SELECT ka.kingdomaward_id, ka.kingdom_id, ka.name AS award_name
+                 FROM ' . DB_PREFIX . 'kingdomaward ka
+                 WHERE ka.kingdom_id IN (' . implode(',', $scopeKingdomIds) . ')
+                   AND ka.kingdomaward_id IN (' . implode(',', array_map('intval', $pseudoCandidates)) . ')
+                 ORDER BY ka.name'
+            );
+            if ($pseudoResult) {
+                while ($pseudoResult->Next()) {
+                    $kaId = (int) $pseudoResult->kingdomaward_id;
+                    if (!$kaId) {
+                        continue;
+                    }
+                    $name = $pseudoResult->award_name;
+                    $display = preg_replace('/^Order of (?:the )?/i', '', $name);
+                    $slug = strtolower(trim($display));
+                    $isOwn = (int) $pseudoResult->kingdom_id === $pseudoScopeKingdomId;
+                    if (!isset($pseudoGroups[$slug])) {
+                        $pseudoGroups[$slug] = [
+                            'Name' => $name,
+                            'DisplayName' => $display,
+                            'KaIds' => [],
+                            'OwnKaId' => 0,
+                        ];
+                    }
+                    $pseudoGroups[$slug]['KaIds'][] = $kaId;
+                    // Prefer this kingdom's own row for the column key and label;
+                    // an inherited-only ladder keeps the ancestor's wording.
+                    if ($isOwn && !$pseudoGroups[$slug]['OwnKaId']) {
+                        $pseudoGroups[$slug]['OwnKaId'] = $kaId;
+                        $pseudoGroups[$slug]['Name'] = $name;
+                        $pseudoGroups[$slug]['DisplayName'] = $display;
+                    }
+                }
+            }
+        }
+
+        $pseudoKaIds = [];
+        $pseudoKeyCases = [];
+        foreach ($pseudoGroups as $group) {
+            $primary = $group['OwnKaId'] ?: min($group['KaIds']);
+            $key = 'k' . $primary;
+            $awardCols[$key] = [
+                'Name' => $group['Name'],
+                'DisplayName' => $group['DisplayName'],
+                'KnightGroup' => $knightGroupMap[$group['Name']] ?? '',
+            ];
+            $pseudoKaIds = array_merge($pseudoKaIds, $group['KaIds']);
+            $pseudoKeyCases[] = 'WHEN ka.kingdomaward_id IN (' . implode(',', $group['KaIds'])
+                . ") THEN '" . $key . "'";
+        }
+
+        if ($awardCols === []) {
+            return ['ScopeName' => $scopeName, 'LadderAwards' => [], 'GridRows' => []];
+        }
+
+        $realIdList = $realAwardIds !== [] ? implode(',', $realAwardIds) : '0';
+        $pseudoIdList = $pseudoKaIds !== [] ? implode(',', $pseudoKaIds) : '0';
+        // Maps each kingdomaward row onto its merged column key; falls through to
+        // the numeric award_id for real ladders. Pseudo rows are tested FIRST --
+        // 12 of the 25 point at award_id 94 ("Custom Award"), so testing award_id
+        // would file them under a column that does not exist.
+        $pseudoCaseSql = $pseudoKeyCases !== []
+            ? 'CASE ' . implode(' ', $pseudoKeyCases) . ' ELSE CAST(a.award_id AS CHAR) END'
+            : 'CAST(a.award_id AS CHAR)';
+        // Cache key must cover both sets or a kingdom gaining a pseudo-ladder
+        // would keep serving the old grid.
+        $awardIds = $realIdList . '|k' . $pseudoIdList;
+        $gridCacheKey = Ork3::$Lib->ghettocache->key(['type' => $type, 'id' => $id, 'awards' => $awardIds]);
+        $cachedGrid = Ork3::$Lib->ghettocache->get(__CLASS__ . '.GetLadderAwardGrid', $gridCacheKey, 1200);
+        if ($cachedGrid !== false) {
+            return [
+                'ScopeName' => $scopeName,
+                'LadderAwards' => $awardCols,
+                'GridRows' => $cachedGrid,
+            ];
+        }
+
+        $locationClause = $parkId > 0
+            ? 'AND m.park_id = ' . $parkId
+            : ($kingdomId > 0 ? 'AND m.kingdom_id = ' . $kingdomId : '');
+
+        // LEFT JOIN to ork_award, not JOIN: a kingdom-original ladder may have no
+        // row there at all. col_key matches the $awardCols keys built above --
+        // "k<kingdomaward_id>" for pseudo-ladders, the numeric award_id otherwise.
+        //
+        // The pseudo-ladder test comes FIRST and is membership-based, not
+        // "award_id = 0": 12 of the 25 point at award_id 94 ("Custom Award"), so
+        // testing award_id would file Order of the Sharpshooter and friends under
+        // column 94 -- which is not even a column here, so they would vanish again.
+        $dataSql = "SELECT m.mundane_id, m.persona, m.suspended, p.park_id, p.name AS park_name,
+                           {$pseudoCaseSql} AS col_key,
+                           MAX(ma.rank) AS max_rank, COUNT(ma.awards_id) AS grant_count
+                    FROM " . DB_PREFIX . 'mundane m
+                    LEFT JOIN ' . DB_PREFIX . 'park p ON p.park_id = m.park_id
+                    JOIN ' . DB_PREFIX . 'awards ma ON ma.mundane_id = m.mundane_id
+                    JOIN ' . DB_PREFIX . 'kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+                    LEFT JOIN ' . DB_PREFIX . "award a ON a.award_id = ka.award_id
+                    WHERE m.active = 1
+                      AND (
+                            (a.is_ladder = 1 AND a.award_id IN ({$realIdList}))
+                         OR ka.kingdomaward_id IN ({$pseudoIdList})
+                          )
+                      AND (ma.revoked = 0 OR ma.revoked IS NULL)
+                      {$locationClause}
+                    GROUP BY m.mundane_id, col_key
+                    ORDER BY m.persona";
+
+        $this->db->Clear();
+        $dataResult = $this->db->DataSet($dataSql);
+        $playerData = [];
+        if ($dataResult) {
+            while ($dataResult->Next()) {
+                $mid = (int) $dataResult->mundane_id;
+                // Keep as-is: PHP casts "25" to int 25 on array write, while
+                // "k7513" stays a string, matching $awardCols.
+                $aid = $dataResult->col_key;
+                if (!$mid || $aid === null || $aid === '' || $aid === '0') {
+                    continue;
+                }
+                if (!isset($playerData[$mid])) {
+                    $playerData[$mid] = [
+                        'MundaneId' => $mid,
+                        'Persona' => $dataResult->persona,
+                        'ParkId' => (int) $dataResult->park_id,
+                        'ParkName' => $dataResult->park_name ?? '',
+                        'Suspended' => (int) $dataResult->suspended,
+                        'Awards' => [],
+                    ];
+                }
+                // Real columns keep the long-standing GREATEST(max rank, grant
+                // count): some ladders are tracked by repeat grants at rank 0,
+                // where the count IS the level.
+                //
+                // Merged kingdom columns cannot use the count. They span two
+                // kingdomaward rows, so a duplicate grant inflates it past the
+                // real rank -- Squire Countess Gemini has 7 Roach rows (a rank 5
+                // recorded twice) but reached 6, and the count would show 7.
+                // Fall back to the count only when no rank was ever recorded.
+                $_max = (int) $dataResult->max_rank;
+                $_count = (int) $dataResult->grant_count;
+                $val = (is_string($aid) && $aid !== '' && $aid[0] === 'k')
+                    ? ($_max > 0 ? $_max : $_count)
+                    : max($_max, $_count);
+                $playerData[$mid]['Awards'][$aid] = ['Rank' => $val > 0 ? $val : null, 'IsMaster' => false];
+            }
+        }
+
+        if ($playerData === []) {
+            return ['ScopeName' => $scopeName, 'LadderAwards' => $awardCols, 'GridRows' => []];
+        }
+
+        $mundaneIds = implode(',', array_keys($playerData));
+        $ladderToMasterMap = Award::GetLadderMasterMap();
+        $masterAwardIds = [];
+        foreach (array_keys($awardCols) as $lid) {
+            if (isset($ladderToMasterMap[$lid])) {
+                foreach ($ladderToMasterMap[$lid]['MasterAwardIds'] as $midAward) {
+                    $masterAwardIds[$midAward] = $lid;
+                }
+            }
+        }
+
+        if ($masterAwardIds !== []) {
+            $masterIds = implode(',', array_keys($masterAwardIds));
+            $masterSql = "SELECT ma.mundane_id, ka.award_id AS master_award_id
+                         FROM " . DB_PREFIX . 'awards ma
+                         JOIN ' . DB_PREFIX . 'kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+                         WHERE ma.mundane_id IN (' . $mundaneIds . ")
+                           AND ka.award_id IN ({$masterIds})
+                           AND (ma.revoked = 0 OR ma.revoked IS NULL)
+                         GROUP BY ma.mundane_id, ka.award_id";
+
+            $this->db->Clear();
+            $masterResult = $this->db->DataSet($masterSql);
+            if ($masterResult) {
+                while ($masterResult->Next()) {
+                    $mid = (int) $masterResult->mundane_id;
+                    if (!$mid) {
+                        continue;
+                    }
+                    $masterAid = (int) $masterResult->master_award_id;
+                    $ladderAid = $masterAwardIds[$masterAid] ?? null;
+                    if ($ladderAid !== null && isset($playerData[$mid]['Awards'][$ladderAid])) {
+                        $playerData[$mid]['Awards'][$ladderAid]['IsMaster'] = true;
+                    }
+                }
+            }
+        }
+
+        $this->db->Clear();
+        $recentResult = $this->db->DataSet(
+            'SELECT DISTINCT mundane_id FROM ' . DB_PREFIX . "attendance
+             WHERE mundane_id IN ({$mundaneIds})
+               AND date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)"
+        );
+        $recentIds = [];
+        if ($recentResult) {
+            while ($recentResult->Next()) {
+                $rmid = (int) $recentResult->mundane_id;
+                if ($rmid) {
+                    $recentIds[$rmid] = true;
+                }
+            }
+        }
+        foreach ($playerData as $mid => &$pRow) {
+            $pRow['RecentSignIn'] = isset($recentIds[$mid]);
+            $pRow['KnightGroups'] = [];
+        }
+        unset($pRow);
+
+        $knightSql = "SELECT ma.mundane_id, COALESCE(alias.name, a.name) AS knight_name
+                      FROM " . DB_PREFIX . 'awards ma
+                      JOIN ' . DB_PREFIX . 'kingdomaward ka ON ka.kingdomaward_id = ma.kingdomaward_id
+                      JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+                      LEFT JOIN ' . DB_PREFIX . 'award alias ON alias.award_id = ma.alias_award_id
+                      WHERE ma.mundane_id IN (' . $mundaneIds . ")
+                        AND COALESCE(alias.peerage, a.peerage) = 'Knight'
+                        AND (ma.revoked = 0 OR ma.revoked IS NULL)
+                      GROUP BY ma.mundane_id, COALESCE(alias.award_id, a.award_id)";
+
+        $this->db->Clear();
+        $knightResult = $this->db->DataSet($knightSql);
+        if ($knightResult) {
+            $knightTypeMap = ['Battle' => 'Battle', 'Sword' => 'Sword', 'Crown' => 'Crown', 'Flame' => 'Flame', 'Serpent' => 'Serpent'];
+            while ($knightResult->Next()) {
+                $mid = (int) $knightResult->mundane_id;
+                if (!isset($playerData[$mid])) {
+                    continue;
+                }
+                $knightType = ucfirst(strtolower(preg_replace('/^knight(?:hood)? of (?:the )?/i', '', $knightResult->knight_name)));
+                if (isset($knightTypeMap[$knightType])) {
+                    $playerData[$mid]['KnightGroups'][$knightType] = true;
+                }
+            }
+        }
+
+        $gridRows = array_values($playerData);
+        Ork3::$Lib->ghettocache->cache(__CLASS__ . '.GetLadderAwardGrid', $gridCacheKey, $gridRows);
+
+        return [
+            'ScopeName' => $scopeName,
+            'LadderAwards' => $awardCols,
+            'GridRows' => $gridRows,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function ladderKnightGroupMap(): array
+    {
+        return [
+            'Order of Battle' => 'Battle',
+            'Order of the Warrior' => 'Sword',
+            'Order of the Crown' => 'Crown',
+            'Order of the Lion' => 'Flame',
+            'Order of the Rose' => 'Flame',
+            'Order of the Smith' => 'Flame',
+            'Order of the Dragon' => 'Serpent',
+            'Order of the Garber' => 'Serpent',
+            'Order of the Owl' => 'Serpent',
+        ];
+    }
 
 }

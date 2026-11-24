@@ -1,0 +1,601 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Ephemeral DB fixtures for reports/voting/awards characterization tests (T-10).
+ */
+final class ReportsFixture
+{
+    private const MARKER = 'T10RPT';
+
+    /** @var list<int> */
+    private array $mundaneIds = [];
+
+    /** @var list<int> */
+    private array $attendanceIds = [];
+
+    /** @var list<int> */
+    private array $awardIds = [];
+
+    /** @var list<int> */
+    private array $duesIds = [];
+
+    /** @var list<int> */
+    private array $officerIds = [];
+
+    /** @var list<int> */
+    private array $eventIds = [];
+
+    /** @var list<int> */
+    private array $authIds = [];
+
+    /** @var list<int> */
+    private array $kingdomAwardIds = [];
+
+    /** @var array<string, array{0: int, 1: string, 2: string|null}> kingdom|key => [kingdomId, key, original value or null when absent] */
+    private array $configRestores = [];
+
+    public function __construct(
+        private readonly PDO $pdo,
+    ) {
+    }
+
+    public function pdo(): PDO
+    {
+        return $this->pdo;
+    }
+
+    public static function create(): self
+    {
+        $pdo = new PDO(
+            sprintf(
+                'mysql:host=%s;port=%d;dbname=%s;charset=utf8',
+                DB_HOSTNAME,
+                DB_PORT,
+                DB_DATABASE,
+            ),
+            DB_USERNAME,
+            DB_PASSWORD,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+        );
+
+        return new self($pdo);
+    }
+
+    public function firstKingdomId(): int
+    {
+        return (int) $this->pdo->query(
+            'SELECT kingdom_id FROM ' . DB_PREFIX . "kingdom WHERE active = 'Active' ORDER BY kingdom_id ASC LIMIT 1"
+        )->fetchColumn();
+    }
+
+    public function firstParkId(): int
+    {
+        return (int) $this->pdo->query(
+            'SELECT park_id FROM ' . DB_PREFIX . "park WHERE active = 'Active' ORDER BY park_id ASC LIMIT 1"
+        )->fetchColumn();
+    }
+
+    public function kingdomWithLadderAwards(): int
+    {
+        $kid = (int) $this->pdo->query(
+            'SELECT ka.kingdom_id FROM ' . DB_PREFIX . 'kingdomaward ka
+             INNER JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+             WHERE a.is_ladder = 1 AND a.award_id != 31
+             ORDER BY ka.kingdom_id ASC LIMIT 1'
+        )->fetchColumn();
+
+        return $kid > 0 ? $kid : $this->firstKingdomId();
+    }
+
+    public function parkIdInKingdom(int $kingdomId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT park_id FROM ' . DB_PREFIX . "park WHERE kingdom_id = ? AND active = 'Active' ORDER BY park_id ASC LIMIT 1"
+        );
+        $stmt->execute([$kingdomId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    public function secondParkIdInKingdom(int $kingdomId, int $excludeParkId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT park_id FROM ' . DB_PREFIX . "park WHERE kingdom_id = ? AND active = 'Active' AND park_id != ? ORDER BY park_id ASC LIMIT 1"
+        );
+        $stmt->execute([$kingdomId, $excludeParkId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * @return array{mundane_id: int, park_id: int, kingdom_id: int, token: string}
+     */
+    public function createPlayer(int $parkId, string $suffix = 'player'): array
+    {
+        $kingdomId = $this->kingdomIdForPark($parkId);
+        $token = md5(self::MARKER . $suffix . bin2hex(random_bytes(8)));
+        $username = strtolower(self::MARKER . '_' . $suffix . '_' . substr($token, 0, 8));
+        $mundaneId = $this->insertMundane($suffix, $parkId, $kingdomId, $token, $username);
+
+        return [
+            'mundane_id' => $mundaneId,
+            'park_id' => $parkId,
+            'kingdom_id' => $kingdomId,
+            'token' => $token,
+        ];
+    }
+
+    public function insertScopedAuth(int $mundaneId, int $parkId, int $kingdomId, string $role = 'admin'): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'authorization
+             (mundane_id, park_id, kingdom_id, event_id, unit_id, role, modified)
+             VALUES (?, ?, ?, 0, 0, ?, NOW())'
+        );
+        $stmt->execute([$mundaneId, $parkId, $kingdomId, $role]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->authIds[] = $id;
+
+        return $id;
+    }
+
+    public function insertGlobalAdmin(int $mundaneId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'authorization
+             (mundane_id, park_id, kingdom_id, event_id, unit_id, role, modified)
+             VALUES (?, 0, 0, 0, 0, ?, NOW())'
+        );
+        $stmt->execute([$mundaneId, 'admin']);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->authIds[] = $id;
+
+        return $id;
+    }
+
+    public function insertAttendance(int $mundaneId, int $parkId, int $kingdomId, string $date, int $eventId = 0, int $online = 0): int
+    {
+        $classId = (int) $this->pdo->query(
+            'SELECT class_id FROM ' . DB_PREFIX . 'class ORDER BY class_id ASC LIMIT 1'
+        )->fetchColumn();
+        if ($classId <= 0) {
+            throw new RuntimeException('No class row in seed data.');
+        }
+
+        $timestamp = strtotime($date);
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'attendance
+             (park_id, kingdom_id, mundane_id, persona, class_id, date, credits, note, flavor, by_whom_id,
+              entered_at, entry_method, event_id, event_calendardetail_id, date_year, date_month, date_week3, date_week6, online)
+             VALUES (?, ?, ?, ?, ?, ?, 1, \'\', \'\', ?, NOW(), \'manual\', ?, 0, ?, ?, ?, 0, ?)'
+        );
+        $stmt->execute([
+            $parkId,
+            $kingdomId,
+            $mundaneId,
+            self::MARKER . ' attendance',
+            $classId,
+            $date,
+            $mundaneId,
+            $eventId,
+            (int) date('Y', $timestamp),
+            (int) date('n', $timestamp),
+            (int) date('W', $timestamp),
+            $online ? 1 : 0,
+        ]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->attendanceIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * A Kingdom-sponsored event: filed under the kingdom with no park.
+     */
+    public function insertKingdomEvent(int $kingdomId, int $ownerMundaneId, string $suffix = 'event'): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'event (kingdom_id, park_id, mundane_id, unit_id, name, status)
+             VALUES (?, 0, ?, 1, ?, \'published\')'
+        );
+        $stmt->execute([$kingdomId, $ownerMundaneId, self::MARKER . ' ' . $suffix]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->eventIds[] = $id;
+
+        return $id;
+    }
+
+    public function insertOfficer(int $mundaneId, int $kingdomId, int $parkId, string $role = 'Regent'): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'officer (kingdom_id, park_id, mundane_id, role, system, authorization_id)
+             VALUES (?, ?, ?, ?, 0, 0)'
+        );
+        $stmt->execute([$kingdomId, $parkId, $mundaneId, $role]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->officerIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * Prepare a player so voting eligibility base checks can pass.
+     */
+    public function makeVotingReady(int $mundaneId, string $memberSince = '2020-01-01'): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . DB_PREFIX . 'mundane
+             SET waivered = 1, active = 1, suspended = 0, park_member_since = ?
+             WHERE mundane_id = ?'
+        );
+        $stmt->execute([$memberSince, $mundaneId]);
+    }
+
+    /**
+     * A row in ork_dues (the live dues ledger Report::GetDuesPaidList reads).
+     * Defaults: paid through one year from today, not lifetime, not revoked.
+     */
+    public function insertDues(
+        int $mundaneId,
+        int $parkId,
+        int $kingdomId,
+        ?string $duesUntil = null,
+        bool $forLife = false,
+        bool $revoked = false,
+    ): int {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'dues
+             (mundane_id, kingdom_id, park_id, created_on, created_by, dues_from, terms, dues_until,
+              dues_for_life, revoked)
+             VALUES (?, ?, ?, CURDATE(), ?, CURDATE(), 6, COALESCE(?, DATE_ADD(CURDATE(), INTERVAL 1 YEAR)), ?, ?)'
+        );
+        $stmt->execute([$mundaneId, $kingdomId, $parkId, $mundaneId, $duesUntil, $forLife ? 1 : 0, $revoked ? 1 : 0]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->duesIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * @return array{kingdomaward_id: int, award_id: int, name: string}
+     */
+    public function firstLadderAward(int $kingdomId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT ka.kingdomaward_id, ka.award_id, IFNULL(ka.name, a.name) AS name
+             FROM ' . DB_PREFIX . 'kingdomaward ka
+             INNER JOIN ' . DB_PREFIX . 'award a ON a.award_id = ka.award_id
+             WHERE ka.kingdom_id = ? AND a.is_ladder = 1 AND a.award_id != 31
+             ORDER BY ka.award_id ASC LIMIT 1'
+        );
+        $stmt->execute([$kingdomId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row === false) {
+            throw new RuntimeException('No ladder award for kingdom ' . $kingdomId);
+        }
+
+        return [
+            'kingdomaward_id' => (int) $row['kingdomaward_id'],
+            'award_id' => (int) $row['award_id'],
+            'name' => (string) $row['name'],
+        ];
+    }
+
+    public function awardGlobalName(int $awardId): string
+    {
+        $stmt = $this->pdo->prepare('SELECT name FROM ' . DB_PREFIX . 'award WHERE award_id = ?');
+        $stmt->execute([$awardId]);
+
+        return (string) $stmt->fetchColumn();
+    }
+
+    public function renameKingdomAward(int $kingdomAwardId, string $name): void
+    {
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . DB_PREFIX . 'kingdomaward SET name = ? WHERE kingdomaward_id = ?'
+        );
+        $stmt->execute([$name, $kingdomAwardId]);
+    }
+
+    public function insertLadderAward(int $mundaneId, int $parkId, int $kingdomId, int $kingdomAwardId, int $awardId, int $rank = 3): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'awards
+             (kingdomaward_id, mundane_id, stripped_from, unit_id, park_id, kingdom_id, team_id, rank, date,
+              given_by_id, note, at_park_id, at_kingdom_id, at_event_id, custom_name, alias_award_id,
+              award_id, by_whom_id, entered_at, revoked)
+             VALUES (?, ?, 0, 0, ?, ?, 0, ?, CURDATE(), ?, \'\', 0, 0, 0, \'\', 0, ?, ?, NOW(), 0)'
+        );
+        $stmt->execute([
+            $kingdomAwardId,
+            $mundaneId,
+            $parkId,
+            $kingdomId,
+            $rank,
+            $mundaneId,
+            $awardId,
+            $mundaneId,
+        ]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->awardIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * A kingdom-specific order with no ork_award row (ork_kingdomaward.award_id = 0),
+     * like the Order of the Raider. Returns the kingdomaward id; cleaned up.
+     */
+    public function insertKingdomOnlyAward(int $kingdomId, string $name): int
+    {
+        $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'kingdomaward (is_title, title_class, kingdom_id, award_id, name, reign_limit, month_limit)
+             VALUES (0, 0, ?, 0, ?, 0, 0)'
+        )->execute([$kingdomId, self::MARKER . ' ' . $name]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->kingdomAwardIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * A kingdom's own row for a global award (ork_kingdomaward.award_id = $awardId),
+     * e.g. a kingdom renaming a ladder. Returns the kingdomaward id; cleaned up.
+     */
+    public function insertKingdomAward(int $kingdomId, int $awardId, string $name): int
+    {
+        $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'kingdomaward (is_title, title_class, kingdom_id, award_id, name, reign_limit, month_limit)
+             VALUES (0, 0, ?, ?, ?, 0, 0)'
+        )->execute([$kingdomId, $awardId, $name]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->kingdomAwardIds[] = $id;
+
+        return $id;
+    }
+
+    /**
+     * Same as insertKingdomAward() but under a CHOSEN kingdomaward_id. Needed to
+     * stand in for a kingdom-original ladder: Award::pseudoLadderKingdomAwardIds()
+     * recognises those by their production ids, which the sandbox does not carry.
+     * Fails loudly if the id is already taken rather than silently reusing a row.
+     * Cleaned up with the rest.
+     */
+    public function insertKingdomAwardWithId(int $kingdomAwardId, int $kingdomId, int $awardId, string $name): int
+    {
+        $taken = $this->pdo->prepare('SELECT 1 FROM ' . DB_PREFIX . 'kingdomaward WHERE kingdomaward_id = ?');
+        $taken->execute([$kingdomAwardId]);
+        if ($taken->fetchColumn() !== false) {
+            throw new RuntimeException("kingdomaward_id {$kingdomAwardId} already exists in the sandbox; pick another curated id");
+        }
+        $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'kingdomaward (kingdomaward_id, is_title, title_class, kingdom_id, award_id, name, reign_limit, month_limit)
+             VALUES (?, 0, 0, ?, ?, ?, 0, 0)'
+        )->execute([$kingdomAwardId, $kingdomId, $awardId, $name]);
+        $this->kingdomAwardIds[] = $kingdomAwardId;
+
+        return $kingdomAwardId;
+    }
+
+    public function insertParkOfficer(int $kingdomId, int $parkId, int $mundaneId, string $role): int
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'officer
+             (kingdom_id, park_id, mundane_id, role, system, authorization_id)
+             VALUES (?, ?, ?, ?, 0, 0)'
+        );
+        $stmt->execute([$kingdomId, $parkId, $mundaneId, $role]);
+        $id = (int) $this->pdo->lastInsertId();
+        $this->officerIds[] = $id;
+
+        return $id;
+    }
+
+    public function kingdomName(int $kingdomId): string
+    {
+        $stmt = $this->pdo->prepare('SELECT name FROM ' . DB_PREFIX . 'kingdom WHERE kingdom_id = ?');
+        $stmt->execute([$kingdomId]);
+
+        return (string) $stmt->fetchColumn();
+    }
+
+    public function parkName(int $parkId): string
+    {
+        $stmt = $this->pdo->prepare('SELECT name FROM ' . DB_PREFIX . 'park WHERE park_id = ?');
+        $stmt->execute([$parkId]);
+
+        return (string) $stmt->fetchColumn();
+    }
+
+    /**
+     * Set (or create) a kingdom ork_configuration row; the original is restored in cleanup().
+     * $jsonValue is stored verbatim, e.g. '"0"'.
+     */
+    public function setKingdomConfig(int $kingdomId, string $key, string $jsonValue): void
+    {
+        $slot = $kingdomId . '|' . $key;
+        $current = $this->kingdomConfigValue($kingdomId, $key);
+        if (!array_key_exists($slot, $this->configRestores)) {
+            $this->configRestores[$slot] = [$kingdomId, $key, $current];
+        }
+        if ($current === null) {
+            $stmt = $this->pdo->prepare(
+                'INSERT INTO ' . DB_PREFIX . "configuration (type, id, `key`, value, user_setting, allowed_values, var_type)
+                 VALUES ('Kingdom', ?, ?, ?, 1, 'null', 'fixed')"
+            );
+            $stmt->execute([$kingdomId, $key, $jsonValue]);
+        } else {
+            $stmt = $this->pdo->prepare(
+                'UPDATE ' . DB_PREFIX . "configuration SET value = ? WHERE type = 'Kingdom' AND id = ? AND `key` = ?"
+            );
+            $stmt->execute([$jsonValue, $kingdomId, $key]);
+        }
+    }
+
+    /**
+     * Remove a kingdom ork_configuration row; the original is restored in cleanup().
+     */
+    public function deleteKingdomConfig(int $kingdomId, string $key): void
+    {
+        $slot = $kingdomId . '|' . $key;
+        if (!array_key_exists($slot, $this->configRestores)) {
+            $this->configRestores[$slot] = [$kingdomId, $key, $this->kingdomConfigValue($kingdomId, $key)];
+        }
+        $stmt = $this->pdo->prepare(
+            'DELETE FROM ' . DB_PREFIX . "configuration WHERE type = 'Kingdom' AND id = ? AND `key` = ?"
+        );
+        $stmt->execute([$kingdomId, $key]);
+    }
+
+    private function kingdomConfigValue(int $kingdomId, string $key): ?string
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT value FROM ' . DB_PREFIX . "configuration WHERE type = 'Kingdom' AND id = ? AND `key` = ? LIMIT 1"
+        );
+        $stmt->execute([$kingdomId, $key]);
+        $value = $stmt->fetchColumn();
+
+        return $value === false ? null : (string) $value;
+    }
+
+    public function cleanup(): void
+    {
+        foreach ($this->configRestores as [$kingdomId, $key, $original]) {
+            if ($original === null) {
+                $stmt = $this->pdo->prepare(
+                    'DELETE FROM ' . DB_PREFIX . "configuration WHERE type = 'Kingdom' AND id = ? AND `key` = ?"
+                );
+                $stmt->execute([$kingdomId, $key]);
+            } else {
+                $this->setKingdomConfig($kingdomId, $key, $original);
+            }
+        }
+        $this->configRestores = [];
+
+        if ($this->authIds !== []) {
+            $in = implode(',', array_map('intval', $this->authIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "authorization WHERE authorization_id IN ({$in})");
+            $this->authIds = [];
+        }
+
+        if ($this->officerIds !== []) {
+            $in = implode(',', array_map('intval', $this->officerIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "officer WHERE officer_id IN ({$in})");
+            $this->officerIds = [];
+        }
+
+        if ($this->awardIds !== []) {
+            $in = implode(',', array_map('intval', $this->awardIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "awards WHERE awards_id IN ({$in})");
+            $this->awardIds = [];
+        }
+
+        if ($this->kingdomAwardIds !== []) {
+            $in = implode(',', array_map('intval', $this->kingdomAwardIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "awards WHERE kingdomaward_id IN ({$in})");
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "kingdomaward WHERE kingdomaward_id IN ({$in})");
+            $this->kingdomAwardIds = [];
+        }
+
+        if ($this->duesIds !== []) {
+            $in = implode(',', array_map('intval', $this->duesIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "dues WHERE dues_id IN ({$in})");
+            $this->duesIds = [];
+        }
+
+        if ($this->attendanceIds !== []) {
+            $in = implode(',', array_map('intval', $this->attendanceIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "attendance WHERE attendance_id IN ({$in})");
+            $this->attendanceIds = [];
+        }
+
+        if ($this->eventIds !== []) {
+            $in = implode(',', array_map('intval', $this->eventIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "event WHERE event_id IN ({$in})");
+            $this->eventIds = [];
+        }
+
+        if ($this->mundaneIds !== []) {
+            $in = implode(',', array_map('intval', $this->mundaneIds));
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "dues WHERE mundane_id IN ({$in})");
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "awards WHERE mundane_id IN ({$in})");
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "officer WHERE mundane_id IN ({$in})");
+            $this->pdo->exec('DELETE FROM ' . DB_PREFIX . "mundane WHERE mundane_id IN ({$in})");
+            $this->mundaneIds = [];
+        }
+    }
+
+    private function kingdomIdForPark(int $parkId): int
+    {
+        $stmt = $this->pdo->prepare('SELECT kingdom_id FROM ' . DB_PREFIX . 'park WHERE park_id = ?');
+        $stmt->execute([$parkId]);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    private function insertMundane(
+        string $suffix,
+        int $parkId,
+        int $kingdomId,
+        string $token,
+        string $username,
+    ): int {
+        $persona = self::MARKER . ' ' . ucfirst($suffix);
+        $templateId = (int) $this->pdo->query(
+            'SELECT mundane_id FROM ' . DB_PREFIX . 'mundane ORDER BY mundane_id ASC LIMIT 1'
+        )->fetchColumn();
+
+        $clone = $this->pdo->prepare(
+            'INSERT INTO ' . DB_PREFIX . 'mundane
+             (given_name, surname, other_name, pronoun_id, pronoun_custom, username, persona, email,
+              park_id, kingdom_id, token, restricted, waivered, waiver_ext, has_heraldry, has_banner,
+              banner_show_logo, banner_vignette, banner_offset_x, banner_offset_y, has_image, company_id,
+              token_expires, password_expires, password_salt, xtoken, penalty_box, active, suspended,
+              suspended_by_id, suspended_at, suspended_until, suspension, suspension_propagates,
+              reeve_qualified, reeve_qualified_until, corpora_qualified, corpora_qualified_until,
+              park_member_since, milestone_config, basic_fonts, dyslexia_fonts)
+             SELECT ?, ?, other_name, pronoun_id, pronoun_custom, ?, ?, ?,
+                    ?, ?, ?, restricted, waivered, waiver_ext, has_heraldry, has_banner,
+                    banner_show_logo, banner_vignette, banner_offset_x, banner_offset_y, has_image, company_id,
+                    token_expires, password_expires, password_salt, xtoken, penalty_box, active, suspended,
+                    suspended_by_id, suspended_at, suspended_until, suspension, suspension_propagates,
+                    reeve_qualified, reeve_qualified_until, corpora_qualified, corpora_qualified_until,
+                    park_member_since, milestone_config, basic_fonts, dyslexia_fonts
+             FROM ' . DB_PREFIX . 'mundane WHERE mundane_id = ?'
+        );
+        $clone->execute([
+            'T10',
+            $suffix,
+            $username,
+            $persona,
+            $username . '@example.test',
+            $parkId,
+            $kingdomId,
+            $token,
+            $templateId,
+        ]);
+
+        $id = (int) $this->pdo->lastInsertId();
+        $this->mundaneIds[] = $id;
+        $this->seedSession($id, $token);
+
+        return $id;
+    }
+
+    /**
+     * Multi-device sessions (ork_session) are the authoritative token store;
+     * seed a session row for fixture tokens (mirrors the migration backfill).
+     */
+    private function seedSession(int $mundaneId, string $token): void
+    {
+        if ($token === '') {
+            return;
+        }
+        $this->pdo->prepare(
+            'INSERT IGNORE INTO ' . DB_PREFIX . 'session (mundane_id, token, created, last_seen, expires)
+             VALUES (?, ?, NOW(), NOW(), DATE_ADD(NOW(), INTERVAL 72 HOUR))'
+        )->execute([$mundaneId, $token]);
+    }
+}
